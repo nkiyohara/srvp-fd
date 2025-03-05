@@ -32,8 +32,8 @@ from srvp_mmnist_fd import frechet_distance
 # Load your image tensors
 # images1 and images2 should be torch tensors with shape [batch_size, channels, height, width]
 # For example, for Moving MNIST: [batch_size, 1, 64, 64]
-images1 = torch.randn(100, 1, 64, 64)  # Replace with your actual images
-images2 = torch.randn(100, 1, 64, 64)  # Replace with your actual images
+images1 = torch.randn(512, 1, 64, 64)  # Replace with your actual images
+images2 = torch.randn(512, 1, 64, 64)  # Replace with your actual images
 
 # Calculate Fréchet distance
 fd = frechet_distance(images1, images2)

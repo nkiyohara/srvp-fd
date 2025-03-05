@@ -45,10 +45,10 @@ def test_calculate_frechet_distance():
 @pytest.mark.parametrize(
     ("shape1", "shape2", "expected_error"),
     [
-        ((10, 1, 64, 64), (10, 1, 64, 64), None),  # Valid shapes
-        ((10, 1, 64, 64), (10, 3, 64, 64), ValueError),  # Different channel dimensions
-        ((10, 1, 64, 64), (10, 1, 32, 32), ValueError),  # Different spatial dimensions
-        ((10, 1), (10, 1, 64, 64), ValueError),  # Invalid dimensions
+        ((512, 1, 64, 64), (512, 1, 64, 64), None),  # Valid shapes
+        ((512, 1, 64, 64), (512, 3, 64, 64), ValueError),  # Different channel dimensions
+        ((512, 1, 64, 64), (512, 1, 32, 32), ValueError),  # Different spatial dimensions
+        ((512, 1), (512, 1, 64, 64), ValueError),  # Invalid dimensions
     ],
 )
 def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocker):
@@ -56,7 +56,7 @@ def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocke
     # Create a mock model
     mock_model = MagicMock()
     mock_model.to.return_value = mock_model
-    mock_model.encode.return_value = torch.zeros(1, 10, 128)
+    mock_model.encode.return_value = torch.zeros(1, 512, 128)
 
     # Mock the _get_encoder function instead of _get_model_and_config
     mocker.patch("srvp_mmnist_fd.frechet_distance._get_encoder", return_value=mock_model)

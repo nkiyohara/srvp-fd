@@ -6,7 +6,7 @@ from srvp_mmnist_fd import frechet_distance
 
 # Generate random tensors to simulate Moving MNIST images
 # Shape: [batch_size, channels, height, width]
-batch_size = 100
+batch_size = 512
 channels = 1
 height = 64
 width = 64
