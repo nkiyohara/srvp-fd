@@ -210,9 +210,9 @@ def _get_encoder(
 
     # Create a new encoder
     encoder = DCGAN64Encoder(
-        grayscale=True,  # Moving MNIST is grayscale
-        feature_dim=128,  # Match the feature dimension of the SRVP model
-        base_filters=32,  # Match the base filters of the SRVP model
+        nc=1,  # Moving MNIST is grayscale
+        nh=128,  # Match the feature dimension of the SRVP model
+        nf=32,  # Match the base filters of the SRVP model
     )
 
     if device is not None:
