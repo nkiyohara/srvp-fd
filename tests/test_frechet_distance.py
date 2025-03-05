@@ -1,5 +1,7 @@
 """Tests for the frechet_distance module."""
 
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 import torch
@@ -49,35 +51,23 @@ def test_calculate_frechet_distance():
         ((10, 3), (10, 3, 64, 64), ValueError),  # Invalid dimensions
     ],
 )
-def test_frechet_distance_input_validation(shape1, shape2, expected_error, monkeypatch):
+def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocker):
     """Test input validation in the frechet_distance function."""
-
-    # Mock the _get_model_and_config function to avoid downloading the model
-    def mock_get_model_and_config(_=None):
-        class MockModel:
-            def __init__(self):
-                self.device = "cpu"
-
-            def to(self, device):
-                self.device = device
-                return self
-
-            def eval(self):
-                pass
-
-            def encode(self, x):
-                # Return a tensor with shape [seq_len, batch, nhx]
-                return torch.zeros(1, x.shape[0], 128)
-
-        return MockModel(), {"nhx": 128}
-
-    # Apply the mock
-    monkeypatch.setattr(
-        "mmnist_fd.frechet_distance._get_model_and_config", mock_get_model_and_config
-    )
-
-    # Import here to apply the mock
+    # Import the frechet_distance function here to ensure the mock is applied before import
     from mmnist_fd.frechet_distance import frechet_distance
+
+    # Create a mock model
+    mock_model = MagicMock()
+    mock_model.to.return_value = mock_model
+    mock_model.encode.return_value = torch.zeros(1, 10, 128)
+
+    # Create a mock config
+    mock_config = {"nhx": 128}
+
+    # Mock the _get_model_and_config function
+    mocker.patch(
+        "mmnist_fd.frechet_distance._get_model_and_config", return_value=(mock_model, mock_config)
+    )
 
     # Create test tensors
     images1 = torch.rand(*shape1)
