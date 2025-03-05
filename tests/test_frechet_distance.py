@@ -45,10 +45,10 @@ def test_calculate_frechet_distance():
 @pytest.mark.parametrize(
     ("shape1", "shape2", "expected_error"),
     [
-        ((10, 3, 64, 64), (10, 3, 64, 64), None),  # Valid shapes
-        ((10, 3, 64, 64), (10, 1, 64, 64), ValueError),  # Different channel dimensions
-        ((10, 3, 64, 64), (10, 3, 32, 32), ValueError),  # Different spatial dimensions
-        ((10, 3), (10, 3, 64, 64), ValueError),  # Invalid dimensions
+        ((10, 1, 64, 64), (10, 1, 64, 64), None),  # Valid shapes
+        ((10, 1, 64, 64), (10, 3, 64, 64), ValueError),  # Different channel dimensions
+        ((10, 1, 64, 64), (10, 1, 32, 32), ValueError),  # Different spatial dimensions
+        ((10, 1), (10, 1, 64, 64), ValueError),  # Invalid dimensions
     ],
 )
 def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocker):
