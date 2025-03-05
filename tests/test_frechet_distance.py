@@ -51,29 +51,39 @@ def test_calculate_frechet_distance():
         ((10, 1), (10, 1, 64, 64), ValueError),  # Invalid dimensions
     ],
 )
-def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocker):
+def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocker):  # noqa: ARG001
     """Test input validation in the frechet_distance function."""
-    # Mock the _get_model_and_config function before importing frechet_distance
+    # Create a mock model and config
     mock_model = MagicMock()
     mock_model.to.return_value = mock_model
     mock_model.encode.return_value = torch.zeros(1, 10, 128)
+    mock_config = {"nhx": 128}
 
-    mocker.patch(
-        "srvp_mmnist_fd.frechet_distance._get_model_and_config",
-        return_value=(mock_model, {"nhx": 128}),
-    )
+    # Use monkeypatch instead of mocker.patch
+    import srvp_mmnist_fd.frechet_distance
 
-    # Import the frechet_distance function after applying the mock
-    from srvp_mmnist_fd.frechet_distance import frechet_distance
+    original_get_model_and_config = srvp_mmnist_fd.frechet_distance._get_model_and_config
 
-    # Create test tensors
-    images1 = torch.rand(*shape1)
-    images2 = torch.rand(*shape2)
+    def mock_get_model_and_config(*_args, **_kwargs):  # noqa: ARG001
+        return mock_model, mock_config
 
-    if expected_error:
-        with pytest.raises(expected_error):
-            frechet_distance(images1, images2)
-    else:
-        # Should not raise an error
-        fd = frechet_distance(images1, images2)
-        assert isinstance(fd, float)
+    srvp_mmnist_fd.frechet_distance._get_model_and_config = mock_get_model_and_config
+
+    try:
+        # Import the frechet_distance function
+        from srvp_mmnist_fd.frechet_distance import frechet_distance
+
+        # Create test tensors
+        images1 = torch.rand(*shape1)
+        images2 = torch.rand(*shape2)
+
+        if expected_error:
+            with pytest.raises(expected_error):
+                frechet_distance(images1, images2)
+        else:
+            # Should not raise an error
+            fd = frechet_distance(images1, images2)
+            assert isinstance(fd, float)
+    finally:
+        # Restore the original function
+        srvp_mmnist_fd.frechet_distance._get_model_and_config = original_get_model_and_config
