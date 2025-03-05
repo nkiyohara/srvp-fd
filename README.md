@@ -1,5 +1,10 @@
 # SRVP-MMNIST-FD
 
+[![Python Package](https://github.com/nkiyohara/srvp-mmnist-fd/actions/workflows/python-package.yml/badge.svg)](https://github.com/nkiyohara/srvp-mmnist-fd/actions/workflows/python-package.yml)
+[![PyPI version](https://badge.fury.io/py/srvp-mmnist-fd.svg)](https://badge.fury.io/py/srvp-mmnist-fd)
+[![Python Versions](https://img.shields.io/pypi/pyversions/srvp-mmnist-fd.svg)](https://pypi.org/project/srvp-mmnist-fd/)
+[![License](https://img.shields.io/github/license/nkiyohara/srvp-mmnist-fd.svg)](https://github.com/nkiyohara/srvp-mmnist-fd/blob/main/LICENSE)
+
 A package for calculating Fréchet distance between Moving MNIST images using the encoder from the Stochastic Latent Residual Video Prediction (SRVP) model.
 
 ## Overview
