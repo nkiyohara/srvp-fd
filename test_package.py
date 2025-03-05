@@ -2,7 +2,7 @@
 
 import torch
 
-from mmnist_fd import frechet_distance
+from srvp_mmnist_fd import frechet_distance
 
 # Generate random tensors to simulate Moving MNIST images
 # Shape: [batch_size, channels, height, width]

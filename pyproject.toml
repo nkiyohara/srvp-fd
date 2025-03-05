@@ -37,11 +37,11 @@ classifiers = [
 "Source Code" = "https://github.com/nkiyohara/srvp-mmnist-fd"
 
 [tool.setuptools]
-packages = ["mmnist_fd"]
+packages = ["srvp_mmnist_fd"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-mmnist_fd = ["py.typed"]
+srvp_mmnist_fd = ["py.typed"]
 
 [tool.ruff]
 line-length = 100
@@ -57,7 +57,7 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["mmnist_fd"]
+known-first-party = ["srvp_mmnist_fd"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

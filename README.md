@@ -22,7 +22,7 @@ uv pip install srvp-mmnist-fd
 
 ```python
 import torch
-from mmnist_fd import frechet_distance
+from srvp_mmnist_fd import frechet_distance
 
 # Load your image tensors
 # images1 and images2 should be torch tensors with shape [batch_size, channels, height, width]
