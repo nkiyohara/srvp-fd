@@ -2,9 +2,9 @@ name: Python Package
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
   release:
     types: [created]
 
@@ -38,7 +38,7 @@ jobs:
 
     - name: Test with pytest
       run: |
-        pytest --cov=mmnist_fd tests/
+        pytest --cov=srvp_mmnist_fd tests/
 
   build:
     needs: test
