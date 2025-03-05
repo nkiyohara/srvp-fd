@@ -53,22 +53,18 @@ def test_calculate_frechet_distance():
 )
 def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocker):
     """Test input validation in the frechet_distance function."""
-    # Import the frechet_distance function here to ensure the mock is applied before import
-    from srvp_mmnist_fd.frechet_distance import frechet_distance
-
-    # Create a mock model
+    # Mock the _get_model_and_config function before importing frechet_distance
     mock_model = MagicMock()
     mock_model.to.return_value = mock_model
     mock_model.encode.return_value = torch.zeros(1, 10, 128)
 
-    # Create a mock config
-    mock_config = {"nhx": 128}
-
-    # Mock the _get_model_and_config function
     mocker.patch(
         "srvp_mmnist_fd.frechet_distance._get_model_and_config",
-        return_value=(mock_model, mock_config),
+        return_value=(mock_model, {"nhx": 128}),
     )
+
+    # Import the frechet_distance function after applying the mock
+    from srvp_mmnist_fd.frechet_distance import frechet_distance
 
     # Create test tensors
     images1 = torch.rand(*shape1)
