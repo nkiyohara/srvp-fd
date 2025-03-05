@@ -277,20 +277,22 @@ def frechet_distance(
 
     # Get the encoder
     encoder = _get_encoder(device, model_path)
+    encoder.eval()  # Set to evaluation mode
 
     # Extract features
     with torch.no_grad():
-        images1 = images1.to(device)
-        images2 = images2.to(device)
+        features1 = encoder(images1.to(device))
+        features2 = encoder(images2.to(device))
 
-        # Get features from the encoder
-        features1 = encoder(images1)
-        features2 = encoder(images2)
+    # Convert to numpy arrays
+    features1 = features1.cpu().numpy()
+    features2 = features2.cpu().numpy()
+
+    # Calculate mean and covariance
+    mu1 = np.mean(features1, axis=0)
+    sigma1 = np.cov(features1, rowvar=False)
+    mu2 = np.mean(features2, axis=0)
+    sigma2 = np.cov(features2, rowvar=False)
 
     # Calculate Fréchet distance
-    return _calculate_frechet_distance(
-        features1.mean(0).cpu().numpy(),
-        features1.var(0).cpu().numpy(),
-        features2.mean(0).cpu().numpy(),
-        features2.var(0).cpu().numpy(),
-    )
+    return _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
