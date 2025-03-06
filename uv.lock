@@ -929,7 +929,7 @@ wheels = [
 ]
 
 [[package]]
-name = "srvp-mmnist-fd"
+name = "srvp-fd"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
