@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "srvp-mmnist-fd"
+name = "srvp-fd"
 version = "0.1.0"
-description = "Fréchet distance calculator for Moving MNIST images using SRVP encoder"
+description = "Fréchet distance calculator for video datasets using SRVP encoder"
 readme = "README.md"
 authors = [
     {name = "Naoki Kiyohara", email = "n.kiyohara23@imperial.ac.uk"}
@@ -32,17 +32,17 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/nkiyohara/srvp-mmnist-fd"
-"Bug Tracker" = "https://github.com/nkiyohara/srvp-mmnist-fd/issues"
-"Documentation" = "https://github.com/nkiyohara/srvp-mmnist-fd#readme"
-"Source Code" = "https://github.com/nkiyohara/srvp-mmnist-fd"
+"Homepage" = "https://github.com/nkiyohara/srvp-fd"
+"Bug Tracker" = "https://github.com/nkiyohara/srvp-fd/issues"
+"Documentation" = "https://github.com/nkiyohara/srvp-fd#readme"
+"Source Code" = "https://github.com/nkiyohara/srvp-fd"
 
 [tool.setuptools]
-packages = ["srvp_mmnist_fd"]
+packages = ["srvp_fd"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-srvp_mmnist_fd = ["py.typed"]
+srvp_fd = ["py.typed"]
 
 [tool.ruff]
 line-length = 100
@@ -58,7 +58,7 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["srvp_mmnist_fd"]
+known-first-party = ["srvp_fd"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

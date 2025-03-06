@@ -1,8 +1,8 @@
-"""Example script demonstrating how to use the srvp-mmnist-fd package."""
+"""Example script demonstrating how to use the srvp-fd package."""
 
 import torch
 
-from srvp_mmnist_fd import DATASET_PATHS, frechet_distance
+from srvp_fd import DATASET_PATHS, frechet_distance
 
 print("Available datasets:")
 for dataset in DATASET_PATHS:

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import torch
 
-from srvp_mmnist_fd.frechet_distance import (
+from srvp_fd.frechet_distance import (
     DATASET_PATHS,
     _calculate_frechet_distance,
 )
@@ -82,7 +82,7 @@ def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocke
     mock_model.__call__ = mock_model
 
     # Mock the _get_encoder function
-    mocker.patch("srvp_mmnist_fd.frechet_distance._get_encoder", return_value=mock_model)
+    mocker.patch("srvp_fd.frechet_distance._get_encoder", return_value=mock_model)
 
     # Also mock numpy's cov function to ensure it returns a well-conditioned matrix
     # This is a defensive measure to prevent NaN values
@@ -97,7 +97,7 @@ def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocke
     cov_patch = mocker.patch("numpy.cov", side_effect=mock_cov)
 
     # Import the frechet_distance function
-    from srvp_mmnist_fd.frechet_distance import frechet_distance
+    from srvp_fd.frechet_distance import frechet_distance
 
     # Create test tensors
     images1 = torch.rand(*shape1)
@@ -131,17 +131,15 @@ def test_frechet_distance_with_different_datasets(dataset, mocker):
 
     # Mock the _get_encoder function
     get_encoder_mock = mocker.patch(
-        "srvp_mmnist_fd.frechet_distance._get_encoder", return_value=mock_model
+        "srvp_fd.frechet_distance._get_encoder", return_value=mock_model
     )
 
     # Mock the _get_model_and_config function to return a model with skipco=False
     mock_model_config = MagicMock(), {"skipco": False}
-    mocker.patch(
-        "srvp_mmnist_fd.frechet_distance._get_model_and_config", return_value=mock_model_config
-    )
+    mocker.patch("srvp_fd.frechet_distance._get_model_and_config", return_value=mock_model_config)
 
     # Import the frechet_distance function
-    from srvp_mmnist_fd.frechet_distance import frechet_distance
+    from srvp_fd.frechet_distance import frechet_distance
 
     # Create test tensors with appropriate shapes for each dataset
     # For simplicity, we'll use the same shape for all datasets in this test
@@ -178,7 +176,7 @@ def test_skip_connection_warning(mocker):
 
     # Apply the patch
     mocker.patch(
-        "srvp_mmnist_fd.frechet_distance._get_model_and_config",
+        "srvp_fd.frechet_distance._get_model_and_config",
         side_effect=patched_get_model_and_config,
     )
 
@@ -192,7 +190,7 @@ def test_skip_connection_warning(mocker):
     mock_model.encoder = mock_encoder
 
     # Import the frechet_distance function
-    from srvp_mmnist_fd.frechet_distance import frechet_distance
+    from srvp_fd.frechet_distance import frechet_distance
 
     # Create test tensors
     images1 = torch.rand(10, 1, 64, 64)  # Use grayscale images to match default encoder
@@ -210,23 +208,23 @@ def test_dataset_required_when_no_model_path(mocker):
     """Test that dataset is required when model_path is None."""
     # Mock the _get_model_and_config function to raise the appropriate error
     mocker.patch(
-        "srvp_mmnist_fd.frechet_distance._get_model_and_config",
-        side_effect=ValueError("dataset parameter is required"),
+        "srvp_fd.frechet_distance._get_model_and_config",
+        side_effect=ValueError("No dataset specified"),
     )
 
     # Mock the _get_encoder function to raise the error from _get_model_and_config
     mocker.patch(
-        "srvp_mmnist_fd.frechet_distance._get_encoder",
-        side_effect=ValueError("dataset parameter is required"),
+        "srvp_fd.frechet_distance._get_encoder",
+        side_effect=ValueError("No dataset specified"),
     )
 
     # Import the frechet_distance function
-    from srvp_mmnist_fd.frechet_distance import frechet_distance
+    from srvp_fd.frechet_distance import frechet_distance
 
     # Create test tensors (use grayscale to match default encoder)
     images1 = torch.rand(10, 1, 64, 64)
     images2 = torch.rand(10, 1, 64, 64)
 
     # Check that the error is raised when dataset is None and model_path is None
-    with pytest.raises(ValueError, match="dataset parameter is required"):
+    with pytest.raises(ValueError, match="No dataset specified"):
         frechet_distance(images1, images2, dataset=None, model_path=None)

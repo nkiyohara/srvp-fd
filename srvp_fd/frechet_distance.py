@@ -111,23 +111,21 @@ def _get_model_and_config(
         # Get the dataset path
         dataset_path = DATASET_PATHS[dataset]
 
-        # Download the model from HuggingFace
-        repo_id = "nkiyohara/SRVP-weights-mirror"
-        model_filename = f"{dataset_path}/model.pt"
-        config_filename = f"{dataset_path}/config.json"
-        cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "srvp-mmnist-fd")
-
-        # Try to download from HuggingFace
+        # Download the model and config from HuggingFace Hub
         try:
+            # Create cache directory if it doesn't exist
+            cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "srvp-fd")
+            os.makedirs(cache_dir, exist_ok=True)
+
             # Download the config first
             config_path = hf_hub_download(
-                repo_id=repo_id,
-                filename=config_filename,
+                repo_id="nkiyohara/SRVP-weights-mirror",
+                filename=f"{dataset_path}/config.json",
                 cache_dir=cache_dir,
                 force_download=False,
                 resume_download=True,
             )
-            print(f"Successfully downloaded config from {config_filename}")
+            print(f"Successfully downloaded config from {config_path}")
 
             # Load config
             with open(config_path) as f:
@@ -163,13 +161,13 @@ def _get_model_and_config(
 
             # Download the model
             model_path = hf_hub_download(
-                repo_id=repo_id,
-                filename=model_filename,
+                repo_id="nkiyohara/SRVP-weights-mirror",
+                filename=f"{dataset_path}/model.pt",
                 cache_dir=cache_dir,
                 force_download=False,
                 resume_download=True,
             )
-            print(f"Successfully downloaded model from {model_filename}")
+            print(f"Successfully downloaded model from {model_path}")
 
             # Load model weights
             state_dict = torch.load(model_path, map_location="cpu")

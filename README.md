@@ -1,15 +1,15 @@
-# SRVP-MMNIST-FD
+# SRVP-FD
 
-[![Python Package](https://github.com/nkiyohara/srvp-mmnist-fd/actions/workflows/python-package.yml/badge.svg)](https://github.com/nkiyohara/srvp-mmnist-fd/actions/workflows/python-package.yml)
-[![PyPI version](https://badge.fury.io/py/srvp-mmnist-fd.svg)](https://badge.fury.io/py/srvp-mmnist-fd)
-[![Python Versions](https://img.shields.io/pypi/pyversions/srvp-mmnist-fd.svg)](https://pypi.org/project/srvp-mmnist-fd/)
-[![License](https://img.shields.io/github/license/nkiyohara/srvp-mmnist-fd.svg)](https://github.com/nkiyohara/srvp-mmnist-fd/blob/main/LICENSE)
+[![Python Package](https://github.com/nkiyohara/srvp-fd/actions/workflows/python-package.yml/badge.svg)](https://github.com/nkiyohara/srvp-fd/actions/workflows/python-package.yml)
+[![PyPI version](https://badge.fury.io/py/srvp-fd.svg)](https://badge.fury.io/py/srvp-fd)
+[![Python Versions](https://img.shields.io/pypi/pyversions/srvp-fd.svg)](https://pypi.org/project/srvp-fd/)
+[![License](https://img.shields.io/github/license/nkiyohara/srvp-fd.svg)](https://github.com/nkiyohara/srvp-fd/blob/main/LICENSE)
 
-A package for calculating Fréchet distance between Moving MNIST images using the encoder from the Stochastic Latent Residual Video Prediction (SRVP) model.
+A package for calculating Fréchet distance between video frames using the encoder from the Stochastic Latent Residual Video Prediction (SRVP) model.
 
 ## Overview
 
-This package provides a simple interface to calculate the Fréchet distance between two sets of Moving MNIST images. It uses the encoder from the SRVP model to extract features from the images, and then calculates the Fréchet distance between the feature distributions.
+This package provides a simple interface to calculate the Fréchet distance between two sets of video frames. It uses the encoder from the SRVP model to extract features from the images, and then calculates the Fréchet distance between the feature distributions.
 
 The Fréchet distance is a measure of similarity between two probability distributions. In the context of image generation, it is often used to evaluate the quality of generated images by comparing their feature distribution with the feature distribution of real images.
 
@@ -17,17 +17,17 @@ The Fréchet distance is a measure of similarity between two probability distrib
 
 ```bash
 # Using pip
-pip install srvp-mmnist-fd
+pip install srvp-fd
 
 # Using uv
-uv pip install srvp-mmnist-fd
+uv pip install srvp-fd
 ```
 
 ## Usage
 
 ```python
 import torch
-from srvp_mmnist_fd import frechet_distance
+from srvp_fd import frechet_distance
 
 # Load your image tensors
 # images1 and images2 should be torch tensors with shape [batch_size, channels, height, width]

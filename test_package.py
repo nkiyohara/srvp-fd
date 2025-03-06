@@ -1,8 +1,8 @@
-"""Test script to verify the functionality of the srvp-mmnist-fd package."""
+"""Test script to verify the functionality of the srvp-fd package."""
 
 import torch
 
-from srvp_mmnist_fd import frechet_distance
+from srvp_fd import frechet_distance
 
 # Generate random tensors to simulate Moving MNIST images
 # Shape: [batch_size, channels, height, width]
