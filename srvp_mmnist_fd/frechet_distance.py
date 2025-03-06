@@ -1,12 +1,13 @@
-"""Fréchet distance calculation module for Moving MNIST images.
+"""Fréchet distance calculation module for various video datasets.
 
 This module provides functions to calculate the Fréchet distance between two sets of
-Moving MNIST images using the encoder from the SRVP model to extract features.
+video frames using the encoder from the SRVP model to extract features.
 """
 
 import json
 import os
-from typing import Optional, Tuple, Union
+import warnings
+from typing import Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -16,6 +17,18 @@ from scipy import linalg
 
 # Import the SRVP model components
 from .srvp_model import DCGAN64Encoder, StochasticLatentResidualVideoPredictor
+
+# Define dataset options as Literal type
+DatasetType = Literal["mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"]
+
+# Map dataset names to their paths in the repository
+DATASET_PATHS = {
+    "mmnist_stochastic": "mmnist/stochastic",
+    "mmnist_deterministic": "mmnist/deterministic",
+    "bair": "bair",
+    "kth": "kth",
+    "human": "human",
+}
 
 
 def _calculate_frechet_distance(
@@ -72,20 +85,36 @@ def _fix_state_dict_keys(state_dict):
 
 def _get_model_and_config(
     model_path: Optional[str] = None,
+    dataset: Optional[DatasetType] = None,
 ) -> Tuple[StochasticLatentResidualVideoPredictor, dict]:
     """Load the SRVP model and its configuration.
 
     Args:
         model_path: Path to the model file. If None, the model will be downloaded from HuggingFace.
+        dataset: The dataset to use. Required if model_path is None.
+            Options: "mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"
 
     Returns:
         A tuple containing the model and its configuration.
+
+    Raises:
+        ValueError: If dataset is None when model_path is None.
+        FileNotFoundError: If the model or config file cannot be found.
     """
     if model_path is None:
+        if dataset is None:
+            raise ValueError(
+                "dataset parameter is required when model_path is not provided. "
+                "Choose from: mmnist_stochastic, mmnist_deterministic, bair, kth, human"
+            )
+
+        # Get the dataset path
+        dataset_path = DATASET_PATHS[dataset]
+
         # Download the model from HuggingFace
-        repo_id = "naokishibuya/srvp-mmnist-fd"
-        model_filename = "mmnist/stochastic/model.pt"
-        config_filename = "mmnist/stochastic/config.json"
+        repo_id = "nkiyohara/SRVP-weights-mirror"
+        model_filename = f"{dataset_path}/model.pt"
+        config_filename = f"{dataset_path}/config.json"
         cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "srvp-mmnist-fd")
 
         # Try to download from HuggingFace
@@ -95,7 +124,7 @@ def _get_model_and_config(
                 repo_id=repo_id,
                 filename=config_filename,
                 cache_dir=cache_dir,
-                force_download=True,
+                force_download=False,
                 resume_download=True,
             )
             print(f"Successfully downloaded config from {config_filename}")
@@ -103,6 +132,17 @@ def _get_model_and_config(
             # Load config
             with open(config_path) as f:
                 config = json.load(f)
+
+            # Check if skipco is True and issue a warning
+            if config.get("skipco", False):
+                warnings.warn(
+                    f"The model for dataset '{dataset}' uses skip connections (skipco=True). "
+                    "This may affect the quality of the Fréchet distance calculation, "
+                    "as skip connections can bypass the encoder's feature extraction. "
+                    "Consider using a model without skip connections for more accurate results.",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
             # Create the model with the config
             model = StochasticLatentResidualVideoPredictor(
@@ -126,7 +166,7 @@ def _get_model_and_config(
                 repo_id=repo_id,
                 filename=model_filename,
                 cache_dir=cache_dir,
-                force_download=True,
+                force_download=False,
                 resume_download=True,
             )
             print(f"Successfully downloaded model from {model_filename}")
@@ -144,7 +184,7 @@ def _get_model_and_config(
         except Exception as e:
             print(f"Failed to download or load model: {e}")
             raise FileNotFoundError(
-                "Could not download or load the model from HuggingFace. "
+                f"Could not download or load the model for dataset '{dataset}' from HuggingFace. "
                 "Please check your internet connection or provide a local model_path."
             ) from e
     else:
@@ -161,6 +201,17 @@ def _get_model_and_config(
         # Load config
         with open(config_path) as f:
             config = json.load(f)
+
+        # Check if skipco is True and issue a warning
+        if config.get("skipco", False):
+            warnings.warn(
+                "The provided model uses skip connections (skipco=True). "
+                "This may affect the quality of the Fréchet distance calculation, "
+                "as skip connections can bypass the encoder's feature extraction. "
+                "Consider using a model without skip connections for more accurate results.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         # Create the model with the config
         model = StochasticLatentResidualVideoPredictor(
@@ -193,22 +244,39 @@ def _get_model_and_config(
 def _get_encoder(
     device: Union[str, torch.device] = None,
     model_path: Optional[str] = None,
+    dataset: Optional[DatasetType] = None,
 ) -> nn.Module:
     """Create and return the encoder part of the SRVP model.
 
     Args:
         device: Device to use for computation.
         model_path: Path to the model file. If provided, will load the encoder from this file.
+        dataset: The dataset to use. Required if model_path is None.
+            Options: "mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"
 
     Returns:
         The encoder module.
+
+    Raises:
+        ValueError: If dataset is None when model_path is None.
     """
     if model_path is not None:
         # Load the model from the provided path
-        model, _ = _get_model_and_config(model_path)
+        model, config = _get_model_and_config(model_path)
         return model.encoder.to(device)
+    if dataset is not None:
+        # Load the model for the specified dataset
+        model, config = _get_model_and_config(dataset=dataset)
+        return model.encoder.to(device)
+    # Create a default encoder for MMNIST (grayscale)
+    # This is kept for backward compatibility
+    warnings.warn(
+        "No model_path or dataset specified. Creating a default encoder for Moving MNIST. "
+        "For better results, specify a dataset or model_path.",
+        UserWarning,
+        stacklevel=2,
+    )
 
-    # Create a new encoder
     encoder = DCGAN64Encoder(
         nc=1,  # Moving MNIST is grayscale
         nh=128,  # Match the feature dimension of the SRVP model
@@ -254,6 +322,7 @@ def _validate_input_shapes(images1: torch.Tensor, images2: torch.Tensor) -> None
 def frechet_distance(
     images1: torch.Tensor,
     images2: torch.Tensor,
+    dataset: DatasetType = "mmnist_stochastic",
     model_path: Optional[str] = None,
     device: Union[str, torch.device] = None,
 ) -> float:
@@ -262,11 +331,16 @@ def frechet_distance(
     Args:
         images1: First set of images. Shape: [batch_size, channels, height, width]
         images2: Second set of images. Shape: [batch_size, channels, height, width]
-        model_path: Path to the model file. If None, the model will be downloaded from HuggingFace.
+        dataset: The dataset to use for feature extraction. Required if model_path is None.
+            Options: "mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"
+        model_path: Path to the model file. If provided, will use this model instead of downloading.
         device: Device to use for computation. If None, will use CUDA if available, otherwise CPU.
 
     Returns:
         The Fréchet distance between the two sets of images.
+
+    Raises:
+        ValueError: If the input shapes are invalid.
     """
     # Validate input shapes
     _validate_input_shapes(images1, images2)
@@ -276,7 +350,7 @@ def frechet_distance(
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Get the encoder
-    encoder = _get_encoder(device, model_path)
+    encoder = _get_encoder(device, model_path, dataset)
     encoder.eval()  # Set to evaluation mode
 
     # Extract features

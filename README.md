@@ -35,9 +35,14 @@ from srvp_mmnist_fd import frechet_distance
 images1 = torch.randn(512, 1, 64, 64)  # Replace with your actual images
 images2 = torch.randn(512, 1, 64, 64)  # Replace with your actual images
 
-# Calculate Fréchet distance
+# Calculate Fréchet distance using the stochastic Moving MNIST model (default)
 fd = frechet_distance(images1, images2)
 print(f"Fréchet distance: {fd}")
+
+# You can specify a different dataset
+# Options: "mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"
+fd_bair = frechet_distance(images1, images2, dataset="bair")
+print(f"Fréchet distance (BAIR): {fd_bair}")
 
 # You can also specify a different model path or device
 # fd = frechet_distance(images1, images2, model_path='path/to/your/model.pt', device='cpu')
@@ -45,10 +50,56 @@ print(f"Fréchet distance: {fd}")
 
 ## Features
 
+- Supports multiple datasets: Moving MNIST (stochastic and deterministic), BAIR, KTH, and Human3.6M
 - Automatically downloads the pre-trained SRVP model from HuggingFace Hub
 - Supports both CPU and GPU computation
 - Simple and easy-to-use interface
 - Works with any PyTorch tensor of the correct shape
+- Warns when using models with skip connections that might affect feature extraction
+
+## Fréchet Distance Calculation
+
+The Fréchet distance (also known as Fréchet Inception Distance or FID when used with Inception features) is a measure of similarity between two probability distributions. In the context of image generation, it is often used to evaluate the quality of generated images by comparing their feature distribution with the feature distribution of real images.
+
+### Mathematical Formula
+
+The Fréchet distance between two multivariate Gaussian distributions is calculated as:
+
+$$d^2((m_1, C_1), (m_2, C_2)) = ||m_1 - m_2||_2^2 + \text{Tr}(C_1 + C_2 - 2\sqrt{C_1 C_2})$$
+
+Where:
+- $m_1, m_2$ are the mean feature vectors of the two distributions
+- $C_1, C_2$ are the covariance matrices of the feature vectors
+- $\text{Tr}$ is the trace operator
+- $\sqrt{C_1 C_2}$ is the matrix square root of the product of the covariance matrices
+
+### Implementation Details
+
+Our implementation follows these steps:
+
+1. **Feature Extraction**: The images are passed through the encoder part of the SRVP model to extract meaningful features.
+2. **Distribution Estimation**: The mean and covariance of the features are calculated to estimate the distribution.
+3. **Distance Calculation**: The Fréchet distance is calculated using the formula above.
+
+The implementation includes safeguards against numerical instability, such as adding a small offset to the covariance matrices when they are not positive definite.
+
+### Supported Datasets
+
+The package supports the following datasets:
+
+- **mmnist_stochastic**: Stochastic Moving MNIST (default)
+- **mmnist_deterministic**: Deterministic Moving MNIST
+- **bair**: BAIR robot pushing dataset
+- **kth**: KTH human actions dataset
+- **human**: Human3.6M dataset
+
+Each dataset has its own pre-trained SRVP model, which is automatically downloaded from the HuggingFace Hub when needed.
+
+### Skip Connections Warning
+
+Some SRVP models use skip connections between the encoder and decoder. When calculating the Fréchet distance, we only use the encoder part of the model. If the model was trained with skip connections, the encoder might not capture all the necessary information, as some of it was meant to be passed directly to the decoder through the skip connections.
+
+The package will issue a warning when using a model with skip connections, recommending to use a model without skip connections for more accurate results.
 
 ## Pre-trained Model Details
 
