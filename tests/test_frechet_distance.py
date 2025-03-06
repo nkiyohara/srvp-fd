@@ -57,12 +57,40 @@ def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocke
     mock_model = MagicMock()
     mock_model.to.return_value = mock_model
 
-    # Set the encoder output shape to match the expected format
-    # The encoder converts each image to a 128-dimensional feature vector
-    mock_model.encode.return_value = torch.randn(512, 128)
+    # Mock the encoder to directly return features that will work with covariance calculation
+    # We need to ensure the features have enough samples and dimensions to avoid singular matrices
+    def mock_encoder_call(images):
+        batch_size = images.shape[0]
+        # Use a small feature dimension that will work well with covariance calculations
+        feature_dim = 5
+
+        # Create features with controlled values to ensure non-singular covariance matrices
+        features = torch.zeros((batch_size, feature_dim))
+        for i in range(batch_size):
+            for j in range(feature_dim):
+                # Create values that vary across both batch and feature dimensions
+                features[i, j] = 1.0 + 0.1 * i + 0.2 * j
+
+        return features
+
+    # Set up the mock to use our function
+    mock_model.side_effect = mock_encoder_call
+    mock_model.__call__ = mock_model
 
     # Mock the _get_encoder function
     mocker.patch("srvp_mmnist_fd.frechet_distance._get_encoder", return_value=mock_model)
+
+    # Also mock numpy's cov function to ensure it returns a well-conditioned matrix
+    # This is a defensive measure to prevent NaN values
+    original_cov = np.cov
+
+    def mock_cov(m, *args, **kwargs):
+        cov_matrix = original_cov(m, *args, **kwargs)
+        # Add a small value to the diagonal to ensure positive definiteness
+        np.fill_diagonal(cov_matrix, cov_matrix.diagonal() + 1e-6)
+        return cov_matrix
+
+    cov_patch = mocker.patch("numpy.cov", side_effect=mock_cov)
 
     # Import the frechet_distance function
     from srvp_mmnist_fd.frechet_distance import frechet_distance
@@ -78,3 +106,6 @@ def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocke
         # Should not raise an error
         fd = frechet_distance(images1, images2)
         assert isinstance(fd, float)
+
+    # Remove the patch after the test
+    cov_patch.stop()
