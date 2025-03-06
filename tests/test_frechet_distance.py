@@ -57,10 +57,8 @@ def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocke
     mock_model = MagicMock()
     mock_model.to.return_value = mock_model
 
-    # モックエンコーダの出力を設定
-    # 実際のエンコーダは各画像を128次元のベクトルに変換する
-    # 有効な形状のテストケースでは、バッチサイズは512
-    # 特徴ベクトルの次元は128（SRVP論文とコードから）
+    # Set the encoder output shape to match the expected format
+    # The encoder converts each image to a 128-dimensional feature vector
     mock_model.encode.return_value = torch.randn(512, 128)
 
     # Mock the _get_encoder function
