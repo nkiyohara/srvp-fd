@@ -75,6 +75,9 @@ jobs:
     needs: [test, build]
     if: github.event_name == 'release' && github.event.action == 'created'
     runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/srvp-fd
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
 
@@ -87,3 +90,5 @@ jobs:
 
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
