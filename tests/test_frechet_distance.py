@@ -56,9 +56,14 @@ def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocke
     # Create a mock model
     mock_model = MagicMock()
     mock_model.to.return_value = mock_model
-    mock_model.encode.return_value = torch.zeros(1, 512, 128)
 
-    # Mock the _get_encoder function instead of _get_model_and_config
+    # モックエンコーダの出力を設定
+    # 実際のエンコーダは各画像を128次元のベクトルに変換する
+    # 有効な形状のテストケースでは、バッチサイズは512
+    # 特徴ベクトルの次元は128（SRVP論文とコードから）
+    mock_model.encode.return_value = torch.randn(512, 128)
+
+    # Mock the _get_encoder function
     mocker.patch("srvp_mmnist_fd.frechet_distance._get_encoder", return_value=mock_model)
 
     # Import the frechet_distance function
