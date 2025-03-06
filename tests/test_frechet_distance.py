@@ -86,10 +86,20 @@ def mock_frechet_distance(images1, images2, dataset=None, model_path=None):
     mu2 = np.mean(features2, axis=0)
     sigma2 = np.cov(features2, rowvar=False)
 
-    # If dataset is 'bair', issue a warning about skip connections
-    if dataset == "bair":
+    # Mock config for each dataset
+    # This should match the actual config files
+    dataset_configs = {
+        "mmnist_stochastic": {"skipco": False},
+        "mmnist_deterministic": {"skipco": False},
+        "bair": {"skipco": True},  # Assuming bair uses skip connections
+        "kth": {"skipco": False},
+        "human": {"skipco": False},
+    }
+
+    # If the dataset uses skip connections, issue a warning
+    if dataset and dataset in dataset_configs and dataset_configs[dataset]["skipco"]:
         warnings.warn(
-            "The model for dataset 'bair' uses skip connections (skipco=True). "
+            f"The model for dataset '{dataset}' uses skip connections (skipco=True). "
             "This may affect the quality of the Fréchet distance calculation, "
             "as skip connections can bypass the encoder's feature extraction. "
             "Consider using a model without skip connections for more accurate results.",
@@ -148,12 +158,19 @@ def test_skip_connection_warning():
     images1 = torch.rand(10, 1, 64, 64)
     images2 = torch.rand(10, 1, 64, 64)
 
-    # Trigger the warning by calling frechet_distance with 'bair' dataset
+    # Trigger the warning by calling frechet_distance with a dataset that uses skip connections
     with pytest.warns(UserWarning, match="skip connections"):
         fd = mock_frechet_distance(images1, images2, dataset="bair")
 
         # Check that the result is a float
         assert isinstance(fd, float)
+
+    # No warning should be issued for datasets without skip connections
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        fd = mock_frechet_distance(images1, images2, dataset="mmnist_stochastic")
+        assert isinstance(fd, float)
+        assert len(record) == 0, "Warning was issued for a dataset without skip connections"
 
 
 def test_dataset_required_when_no_model_path():
