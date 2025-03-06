@@ -86,10 +86,10 @@ def mock_frechet_distance(images1, images2, dataset=None, model_path=None):
     mu2 = np.mean(features2, axis=0)
     sigma2 = np.cov(features2, rowvar=False)
 
-    # If dataset is 'mmnist_stochastic', issue a warning about skip connections
-    if dataset == "mmnist_stochastic":
+    # If dataset is 'bair', issue a warning about skip connections
+    if dataset == "bair":
         warnings.warn(
-            "The model for dataset 'mmnist_stochastic' uses skip connections (skipco=True). "
+            "The model for dataset 'bair' uses skip connections (skipco=True). "
             "This may affect the quality of the Fréchet distance calculation, "
             "as skip connections can bypass the encoder's feature extraction. "
             "Consider using a model without skip connections for more accurate results.",
@@ -118,10 +118,10 @@ def test_frechet_distance_input_validation(shape1, shape2, expected_error):
 
     if expected_error:
         with pytest.raises(expected_error):
-            mock_frechet_distance(images1, images2, dataset="mmnist_stochastic")
+            mock_frechet_distance(images1, images2, dataset="bair")
     else:
         # Should not raise an error
-        fd = mock_frechet_distance(images1, images2, dataset="mmnist_stochastic")
+        fd = mock_frechet_distance(images1, images2, dataset="bair")
         assert isinstance(fd, float)
 
 
@@ -148,9 +148,9 @@ def test_skip_connection_warning():
     images1 = torch.rand(10, 1, 64, 64)
     images2 = torch.rand(10, 1, 64, 64)
 
-    # Trigger the warning by calling frechet_distance
+    # Trigger the warning by calling frechet_distance with 'bair' dataset
     with pytest.warns(UserWarning, match="skip connections"):
-        fd = mock_frechet_distance(images1, images2, dataset="mmnist_stochastic")
+        fd = mock_frechet_distance(images1, images2, dataset="bair")
 
         # Check that the result is a float
         assert isinstance(fd, float)
