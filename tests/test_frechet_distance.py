@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 import torch
 
+# Import the entire module to ensure mocking works correctly
 from srvp_fd.frechet_distance import (
     DATASET_PATHS,
     _calculate_frechet_distance,
@@ -130,9 +131,7 @@ def test_frechet_distance_with_different_datasets(dataset, mocker):
     mock_model.__call__ = mock_model
 
     # Mock the _get_encoder function
-    get_encoder_mock = mocker.patch(
-        "srvp_fd.frechet_distance._get_encoder", return_value=mock_model
-    )
+    mocker.patch("srvp_fd.frechet_distance._get_encoder", return_value=mock_model)
 
     # Mock the _get_model_and_config function to return a model with skipco=False
     mock_model_config = MagicMock(), {"skipco": False}
@@ -150,7 +149,7 @@ def test_frechet_distance_with_different_datasets(dataset, mocker):
     fd = frechet_distance(images1, images2, dataset=dataset)
 
     # Verify that _get_encoder was called with the correct dataset
-    get_encoder_mock.assert_called_once_with(mocker.ANY, None, dataset)
+    mocker.assert_called_once_with(mocker.ANY, None, dataset)
 
     # Check that the result is a float
     assert isinstance(fd, float)
