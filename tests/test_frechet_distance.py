@@ -83,7 +83,7 @@ def test_frechet_distance_input_validation(shape1, shape2, expected_error, mocke
     mock_model.__call__ = mock_model
 
     # Mock the _get_encoder function
-    mocker.patch("srvp_fd.frechet_distance._get_encoder", return_value=mock_model)
+    mocker.patch("srvp_fd.frechet_distance._get_encoder", return_value=mock_model, create=True)
 
     # Also mock numpy's cov function to ensure it returns a well-conditioned matrix
     # This is a defensive measure to prevent NaN values
@@ -132,7 +132,7 @@ def test_frechet_distance_with_different_datasets(dataset, mocker):
 
     # Mock the _get_encoder function
     get_encoder_mock = mocker.patch(
-        "srvp_fd.frechet_distance._get_encoder", return_value=mock_model
+        "srvp_fd.frechet_distance._get_encoder", return_value=mock_model, create=True
     )
 
     # Mock the _get_model_and_config function to return a model with skipco=False
@@ -179,6 +179,7 @@ def test_skip_connection_warning(mocker):
     mocker.patch(
         "srvp_fd.frechet_distance._get_model_and_config",
         side_effect=patched_get_model_and_config,
+        create=True,
     )
 
     # Mock the encoder
@@ -211,6 +212,7 @@ def test_dataset_required_when_no_model_path(mocker):
     mocker.patch(
         "srvp_fd.frechet_distance._get_model_and_config",
         side_effect=ValueError("No dataset specified"),
+        create=True,
     )
 
     # Mock the _get_encoder function to raise the error from _get_model_and_config
