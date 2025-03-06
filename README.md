@@ -103,20 +103,23 @@ The package will issue a warning when using a model with skip connections, recom
 
 ## Pre-trained Model Details
 
-This package utilizes the pre-trained encoder from the SRVP (Stochastic Latent Residual Video Prediction) model, which was developed and trained by the original SRVP authors (Franceschi et al., 2020). The encoder is a convolutional neural network specifically trained on the Stochastic Moving MNIST dataset to extract meaningful features from images.
+This package utilizes the pre-trained encoder from the SRVP (Stochastic Latent Residual Video Prediction) model, which was **developed and trained by the original SRVP authors** (Franceschi et al., 2020). The encoder is a convolutional neural network trained on various video datasets to extract meaningful features from images.
 
-The pre-trained weights are automatically downloaded from the HuggingFace Hub repository when you first use the package. These weights are the original weights trained by the SRVP authors and are used with their permission.
+**Important Note**: The pre-trained weights used in this package are the original weights created by the SRVP authors (Franceschi, Delasalles, Chen, Lamprier, and Gallinari). This package serves as a convenient interface to their work, making it easier to use their sophisticated models for Fréchet distance calculations.
 
 ### Model Architecture
 
-The SRVP model uses a sophisticated architecture:
+The SRVP model uses a sophisticated architecture designed by the original authors:
 - The encoder is based on a DCGAN-style convolutional network
 - It extracts a 128-dimensional feature vector from each frame
-- These features capture the essential characteristics of the Moving MNIST digits
+- These features capture the essential characteristics of the input video frames
+- Different model variants are trained specifically for each supported dataset
 
-### Model Weights
+### Model Weights and Availability
 
-The pre-trained model weights are hosted on HuggingFace Hub and are automatically downloaded when you first use the package. The weights represent the intellectual property of the original SRVP authors and are used in this package with proper attribution.
+The pre-trained model weights are hosted on HuggingFace Hub as a mirror of the original weights and are automatically downloaded when you first use the package. These weights represent years of research and development by the original SRVP team and are made available here with proper attribution.
+
+The weights are mirrored on HuggingFace Hub to ensure reliable and fast access, but all intellectual credit belongs to the original SRVP authors.
 
 ## Citation
 
@@ -139,8 +142,17 @@ This package is licensed under the Apache License 2.0, the same as the original 
 
 ## Acknowledgements
 
-This package is based on the [SRVP](https://github.com/edouardelasalles/srvp) implementation by Jean-Yves Franceschi, Edouard Delasalles, Mickael Chen, Sylvain Lamprier, and Patrick Gallinari. The pre-trained model weights and architecture are the work of these authors, and this package simply provides a convenient interface to use their encoder for calculating Fréchet distances.
+This package is fundamentally built upon the groundbreaking work of the SRVP authors: **Jean-Yves Franceschi, Edouard Delasalles, Mickael Chen, Sylvain Lamprier, and Patrick Gallinari**. Their research and implementation form the core of this package.
 
+**Key contributions from the original authors**:
+- Development of the SRVP architecture and training methodology
+- Training of high-quality models on multiple video datasets
+- Release of pre-trained weights that enable state-of-the-art feature extraction
+- Open-sourcing their implementation under an Apache 2.0 license
+
+This package simply provides a convenient interface to leverage their encoder for calculating Fréchet distances between video distributions. The significant research contribution and intellectual property of the models belong entirely to the original SRVP authors.
+
+For more information about their work:
 - [SRVP GitHub Repository](https://github.com/edouardelasalles/srvp)
 - [SRVP Project Website](https://sites.google.com/view/srvp/)
 - [SRVP Paper](http://proceedings.mlr.press/v119/franceschi20a.html)
