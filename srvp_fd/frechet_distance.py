@@ -77,12 +77,12 @@ def _fix_state_dict_keys(state_dict):
     for key, value in state_dict.items():
         if key.startswith("encoder."):
             encoder_state_dict[key] = value
-    
+
     # Create a new state dict with only the encoder keys
     new_state_dict = {}
     for key, value in encoder_state_dict.items():
         new_state_dict[key] = value
-    
+
     return new_state_dict
 
 
@@ -167,7 +167,7 @@ def _get_model_and_config(
                 nlayers_res=config["nlayers_res"],
                 archi=config["archi"],
             )
-            
+
             # Replace the encoder with our standalone one
             model.encoder = encoder
 
@@ -228,7 +228,7 @@ def _get_model_and_config(
             nlayers_res=config["nlayers_res"],
             archi=config["archi"],
         )
-        
+
         # Replace the encoder with our standalone one
         model.encoder = encoder
 
@@ -245,7 +245,7 @@ def _get_encoder(
     Args:
         device: Device to use for computation.
         model_path: Path to the model file. If provided, will load the encoder from this file.
-        dataset: The dataset to use. Required if model_path is None.
+        dataset: The dataset to use for feature extraction. Required if model_path is None.
             Options: "mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"
 
     Returns:
@@ -262,7 +262,7 @@ def _get_encoder(
         except Exception as e:
             print(f"Failed to load full model: {e}")
             print("Creating a standalone encoder instead...")
-            
+
             # If loading the full model fails, create a standalone encoder
             if dataset is not None or model_path is not None:
                 # Get config if possible
@@ -280,10 +280,10 @@ def _get_encoder(
                     else:
                         model_dir = os.path.dirname(model_path)
                         config_path = os.path.join(model_dir, "config.json")
-                    
+
                     with open(config_path) as f:
                         config = json.load(f)
-                    
+
                     # Create encoder based on config
                     nc = config.get("nc", 1)  # Default to 1 (grayscale)
                     nf = config.get("nf", 32)  # Default to 32 base filters
@@ -295,19 +295,19 @@ def _get_encoder(
             else:
                 nc = 1  # Default to grayscale
                 nf = 32  # Default base filters
-            
+
             # Create a standalone encoder
             encoder = DCGAN64Encoder(
                 nc=nc,  # Number of channels
                 nh=128,  # Feature dimension
                 nf=nf,  # Base filters
             )
-            
+
             if device is not None:
                 encoder = encoder.to(device)
-            
+
             return encoder
-    
+
     # Create a default encoder for MMNIST (grayscale)
     # This is kept for backward compatibility
     warnings.warn(
@@ -382,8 +382,10 @@ class FrechetDistanceCalculator:
         Args:
             dataset: The dataset to use for feature extraction. Required if model_path is None.
                 Options: "mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"
-            model_path: Path to the model file. If provided, will use this model instead of downloading.
-            device: Device to use for computation. If None, will use CUDA if available, otherwise CPU.
+            model_path: Path to the model file. If provided, will use this model instead of
+                downloading.
+            device: Device to use for computation. If None, will use CUDA if available,
+                otherwise CPU.
         """
         # Get the device
         if device is None:

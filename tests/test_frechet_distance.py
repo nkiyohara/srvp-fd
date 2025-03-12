@@ -13,7 +13,6 @@ except ImportError:
 
 from srvp_fd.frechet_distance import (
     DATASET_PATHS,
-    DatasetType,
     FrechetDistanceCalculator,
     _calculate_frechet_distance,
     frechet_distance,
@@ -167,7 +166,7 @@ def test_skip_connection_warning():
     # Create tensors with appropriate channels for each dataset
     images1_rgb = torch.rand(10, 3, 64, 64)  # RGB for BAIR
     images2_rgb = torch.rand(10, 3, 64, 64)
-    
+
     images1_gray = torch.rand(10, 1, 64, 64)  # Grayscale for MMNIST
     images2_gray = torch.rand(10, 1, 64, 64)
 
@@ -197,5 +196,9 @@ def test_default_encoder_warning_when_no_dataset_or_model_path():
         warnings.simplefilter("always")
         fd = frechet_distance(images1, images2, dataset=None, model_path=None)
         assert isinstance(fd, float)
-        assert len(record) > 0, "No warning was issued when neither dataset nor model_path was provided"
-        assert any("default encoder" in str(w.message) for w in record), "Warning about default encoder was not issued"
+        assert len(record) > 0, (
+            "No warning was issued when neither dataset nor model_path was provided"
+        )
+        assert any("default encoder" in str(w.message) for w in record), (
+            "Warning about default encoder was not issued"
+        )
