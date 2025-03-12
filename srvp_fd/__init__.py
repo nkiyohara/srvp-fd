@@ -5,6 +5,11 @@ between two sets of video frames, using the encoder from the SRVP model
 to extract features.
 """
 
-from .frechet_distance import DATASET_PATHS, DatasetType, frechet_distance
+from .frechet_distance import (
+    DATASET_PATHS,
+    DatasetType,
+    FrechetDistanceCalculator,
+    frechet_distance,
+)
 
-__all__ = ["frechet_distance", "DatasetType", "DATASET_PATHS"]
+__all__ = ["frechet_distance", "FrechetDistanceCalculator", "DatasetType", "DATASET_PATHS"]

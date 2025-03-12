@@ -48,6 +48,39 @@ print(f"Fréchet distance (BAIR): {fd_bair}")
 # fd = frechet_distance(images1, images2, model_path='path/to/your/model.pt', device='cpu')
 ```
 
+### Class-based API
+
+For more efficient usage when calculating multiple Fréchet distances, you can use the class-based API:
+
+```python
+import torch
+from srvp_fd import FrechetDistanceCalculator
+
+# Load your image tensors
+images1 = torch.randn(512, 1, 64, 64)  # Replace with your actual images
+images2 = torch.randn(512, 1, 64, 64)  # Replace with your actual images
+images3 = torch.randn(512, 1, 64, 64)  # Replace with your actual images
+
+# Create a calculator (loads the model once)
+calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
+
+# Calculate multiple Fréchet distances efficiently
+fd1 = calculator(images1, images2)
+fd2 = calculator(images1, images3)
+
+print(f"Fréchet distance 1: {fd1}")
+print(f"Fréchet distance 2: {fd2}")
+
+# For even more efficiency, you can extract features once and reuse them
+features1 = calculator.extract_features(images1)
+features2 = calculator.extract_features(images2)
+features3 = calculator.extract_features(images3)
+
+# Calculate Fréchet distances from pre-extracted features
+fd1 = calculator.calculate_frechet_distance_from_features(features1, features2)
+fd2 = calculator.calculate_frechet_distance_from_features(features1, features3)
+```
+
 ## Features
 
 - Supports multiple datasets: Moving MNIST (stochastic and deterministic), BAIR, KTH, and Human3.6M
