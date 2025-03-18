@@ -59,6 +59,12 @@ def test_calculate_frechet_distance():
         ((512, 1, 64, 64), (512, 3, 64, 64), ValueError),  # Different channel dimensions
         ((512, 1, 64, 64), (512, 1, 32, 32), ValueError),  # Different spatial dimensions
         ((512, 1), (512, 1, 64, 64), ValueError),  # Invalid dimensions
+        ((127, 1, 64, 64), (512, 1, 64, 64), ValueError),  # Sample size too small in first set
+        ((512, 1, 64, 64), (127, 1, 64, 64), ValueError),  # Sample size too small in second set
+        ((127, 1, 64, 64), (127, 1, 64, 64), ValueError),  # Sample size too small in both sets
+        ((128, 1, 64, 64), (512, 1, 64, 64), ValueError),  # Sample size exactly 128 in first set
+        ((512, 1, 64, 64), (128, 1, 64, 64), ValueError),  # Sample size exactly 128 in second set
+        ((128, 1, 64, 64), (128, 1, 64, 64), ValueError),  # Sample size exactly 128 in both sets
     ],
 )
 def test_frechet_distance_input_validation(shape1, shape2, expected_error):
@@ -87,8 +93,8 @@ def test_frechet_distance_with_dataset(dataset):
     """Test frechet_distance function with a real dataset."""
     # Create tensors with appropriate channels for the dataset
     channels = 3 if dataset == "bair" else 1
-    images1 = torch.rand(10, channels, 64, 64)
-    images2 = torch.rand(10, channels, 64, 64)
+    images1 = torch.rand(129, channels, 64, 64)
+    images2 = torch.rand(129, channels, 64, 64)
 
     # Calculate Fréchet distance using the real implementation
     fd = frechet_distance(images1, images2, dataset=dataset)
@@ -101,9 +107,9 @@ def test_frechet_distance_with_dataset(dataset):
 def test_frechet_distance_calculator():
     """Test the FrechetDistanceCalculator class."""
     # Create tensors
-    images1 = torch.rand(10, 1, 64, 64)
-    images2 = torch.rand(10, 1, 64, 64)
-    images3 = torch.rand(10, 1, 64, 64)
+    images1 = torch.rand(129, 1, 64, 64)
+    images2 = torch.rand(129, 1, 64, 64)
+    images3 = torch.rand(129, 1, 64, 64)
 
     # Create a calculator
     calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
@@ -123,7 +129,7 @@ def test_frechet_distance_calculator():
     features2 = calculator.extract_features(images2)
 
     # Check that the features have the expected shape
-    assert features1.shape[0] == 10  # Batch size
+    assert features1.shape[0] == 129  # Batch size
     assert features1.shape[1] > 0  # Feature dimension
 
     # Test calculate_frechet_distance_from_features method
@@ -147,8 +153,8 @@ def test_frechet_distance_calculator_with_different_datasets(dataset):
 
     # Create tensors with appropriate channels for the dataset
     channels = 3 if dataset == "bair" else 1
-    images1 = torch.rand(10, channels, 64, 64)
-    images2 = torch.rand(10, channels, 64, 64)
+    images1 = torch.rand(129, channels, 64, 64)
+    images2 = torch.rand(129, channels, 64, 64)
 
     # Create a calculator
     calculator = FrechetDistanceCalculator(dataset=dataset)
@@ -164,11 +170,11 @@ def test_frechet_distance_calculator_with_different_datasets(dataset):
 def test_skip_connection_warning():
     """Test that a warning is issued when the model has skip connections."""
     # Create tensors with appropriate channels for each dataset
-    images1_rgb = torch.rand(10, 3, 64, 64)  # RGB for BAIR
-    images2_rgb = torch.rand(10, 3, 64, 64)
+    images1_rgb = torch.rand(129, 3, 64, 64)  # RGB for BAIR
+    images2_rgb = torch.rand(129, 3, 64, 64)
 
-    images1_gray = torch.rand(10, 1, 64, 64)  # Grayscale for MMNIST
-    images2_gray = torch.rand(10, 1, 64, 64)
+    images1_gray = torch.rand(129, 1, 64, 64)  # Grayscale for MMNIST
+    images2_gray = torch.rand(129, 1, 64, 64)
 
     # Trigger the warning by calling frechet_distance with a dataset that uses skip connections
     with pytest.warns(UserWarning, match="skip connections"):
@@ -188,8 +194,8 @@ def test_skip_connection_warning():
 def test_default_encoder_warning_when_no_dataset_or_model_path():
     """Test that a warning is issued when neither dataset nor model_path is provided."""
     # Create tensors
-    images1 = torch.rand(10, 1, 64, 64)
-    images2 = torch.rand(10, 1, 64, 64)
+    images1 = torch.rand(129, 1, 64, 64)
+    images2 = torch.rand(129, 1, 64, 64)
 
     # This should issue a warning but not raise an error
     with warnings.catch_warnings(record=True) as record:

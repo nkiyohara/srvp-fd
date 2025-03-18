@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "srvp-fd"
-version = "0.2.0"
+version = "0.2.1"
 description = "Fréchet distance calculator for video datasets using SRVP encoder"
 readme = "README.md"
 authors = [

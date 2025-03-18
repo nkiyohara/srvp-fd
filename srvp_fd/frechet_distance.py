@@ -358,6 +358,13 @@ def _validate_input_shapes(images1: torch.Tensor, images2: torch.Tensor) -> None
             f"Spatial dimensions must match. Got {images1.shape[2:]} and {images2.shape[2:]}."
         )
 
+    # Check that sample size is greater than 128 (feature dimension)
+    if images1.shape[0] <= 128 or images2.shape[0] <= 128:
+        raise ValueError(
+            f"Sample size must be greater than 128 (feature dimension). "
+            f"Got {images1.shape[0]} and {images2.shape[0]}."
+        )
+
 
 class FrechetDistanceCalculator:
     """A class for calculating Fréchet distance between sets of images.
