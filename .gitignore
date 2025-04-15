@@ -89,3 +89,6 @@ dmypy.json
 
 # PyCharm
 .idea/
+
+# uv package manager
+uv.lock
