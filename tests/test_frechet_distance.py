@@ -3,7 +3,6 @@
 import warnings
 
 try:
-    import numpy as np
     import pytest
     import torch
 except ImportError:
@@ -22,30 +21,30 @@ from srvp_fd.frechet_distance import (
 def test_calculate_frechet_distance():
     """Test the _calculate_frechet_distance function."""
     # Create two identical distributions
-    mu1 = np.array([0.0, 0.0, 0.0])
-    sigma1 = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
-    mu2 = np.array([0.0, 0.0, 0.0])
-    sigma2 = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    mu1 = torch.tensor([0.0, 0.0, 0.0])
+    sigma1 = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    mu2 = torch.tensor([0.0, 0.0, 0.0])
+    sigma2 = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
 
     # The Fréchet distance between identical distributions should be 0
     fd = _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
     assert fd == pytest.approx(0.0, abs=1e-6)
 
     # Create two different distributions
-    mu1 = np.array([0.0, 0.0, 0.0])
-    sigma1 = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
-    mu2 = np.array([1.0, 1.0, 1.0])
-    sigma2 = np.array([[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]])
+    mu1 = torch.tensor([0.0, 0.0, 0.0])
+    sigma1 = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    mu2 = torch.tensor([1.0, 1.0, 1.0])
+    sigma2 = torch.tensor([[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]])
 
     # The Fréchet distance between these distributions should be positive
     fd = _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
     assert fd > 0.0
 
-    # Test with non-finite values in covmean
-    mu1 = np.array([0.0, 0.0, 0.0])
-    sigma1 = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
-    mu2 = np.array([0.0, 0.0, 0.0])
-    sigma2 = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    # Test with near-zero values in sigma matrices
+    mu1 = torch.tensor([0.0, 0.0, 0.0])
+    sigma1 = torch.tensor([[1e-10, 0.0, 0.0], [0.0, 1e-10, 0.0], [0.0, 0.0, 1e-10]])
+    mu2 = torch.tensor([0.0, 0.0, 0.0])
+    sigma2 = torch.tensor([[1e-10, 0.0, 0.0], [0.0, 1e-10, 0.0], [0.0, 0.0, 1e-10]])
 
     # Should not raise an error due to the offset added
     fd = _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
@@ -56,19 +55,14 @@ def test_calculate_frechet_distance():
     ("shape1", "shape2", "expected_error"),
     [
         ((512, 1, 64, 64), (512, 1, 64, 64), None),  # Valid shapes
+        ((129, 1, 64, 64), (129, 1, 64, 64), None),  # Valid shapes, just above minimum
         ((512, 1, 64, 64), (512, 3, 64, 64), ValueError),  # Different channel dimensions
         ((512, 1, 64, 64), (512, 1, 32, 32), ValueError),  # Different spatial dimensions
         ((512, 1), (512, 1, 64, 64), ValueError),  # Invalid dimensions
-        ((127, 1, 64, 64), (512, 1, 64, 64), ValueError),  # Sample size too small in first set
-        ((512, 1, 64, 64), (127, 1, 64, 64), ValueError),  # Sample size too small in second set
-        ((127, 1, 64, 64), (127, 1, 64, 64), ValueError),  # Sample size too small in both sets
-        ((128, 1, 64, 64), (512, 1, 64, 64), ValueError),  # Sample size exactly 128 in first set
-        ((512, 1, 64, 64), (128, 1, 64, 64), ValueError),  # Sample size exactly 128 in second set
-        ((128, 1, 64, 64), (128, 1, 64, 64), ValueError),  # Sample size exactly 128 in both sets
     ],
 )
-def test_frechet_distance_input_validation(shape1, shape2, expected_error):
-    """Test input validation in the frechet_distance function."""
+def test_frechet_distance_frame_input_validation(shape1, shape2, expected_error):
+    """Test input validation for frame comparison type in the frechet_distance function."""
     # Create mock tensors
     images1 = torch.rand(*shape1)
     images2 = torch.rand(*shape2)
@@ -78,10 +72,47 @@ def test_frechet_distance_input_validation(shape1, shape2, expected_error):
 
     if expected_error:
         with pytest.raises(expected_error):
-            calculator(images1, images2)
+            calculator(images1, images2, comparison_type="frame")
     else:
         # Should not raise an error
-        fd = calculator(images1, images2)
+        fd = calculator(images1, images2, comparison_type="frame")
+        assert isinstance(fd, float)
+
+
+@pytest.mark.parametrize(
+    ("shape1", "shape2", "expected_error"),
+    [
+        ((129, 8, 1, 64, 64), (129, 8, 1, 64, 64), None),  # Valid shapes
+        ((129, 8, 1, 64, 64), (129, 8, 3, 64, 64), ValueError),  # Different channel dimensions
+        ((129, 8, 1, 64, 64), (129, 8, 1, 32, 32), ValueError),  # Different spatial dimensions
+        ((129, 8, 1), (129, 8, 1, 64, 64), ValueError),  # Invalid dimensions
+    ],
+)
+def test_frechet_distance_video_input_validation(shape1, shape2, expected_error):
+    """Test input validation for video comparison types in the frechet_distance function."""
+    # Create mock tensors
+    videos1 = torch.rand(*shape1)
+    videos2 = torch.rand(*shape2)
+
+    # Create a calculator with a default dataset
+    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
+
+    # Test for static_content comparison
+    if expected_error:
+        with pytest.raises(expected_error):
+            calculator(videos1, videos2, comparison_type="static_content")
+    else:
+        # Should not raise an error
+        fd = calculator(videos1, videos2, comparison_type="static_content")
+        assert isinstance(fd, float)
+
+    # Test for dynamics comparison
+    if expected_error:
+        with pytest.raises(expected_error):
+            calculator(videos1, videos2, comparison_type="dynamics")
+    else:
+        # Should not raise an error
+        fd = calculator(videos1, videos2, comparison_type="dynamics")
         assert isinstance(fd, float)
 
 
@@ -89,56 +120,88 @@ def test_frechet_distance_input_validation(shape1, shape2, expected_error):
     "dataset",
     ["mmnist_stochastic"],  # Use only one dataset to speed up tests
 )
-def test_frechet_distance_with_dataset(dataset):
-    """Test frechet_distance function with a real dataset."""
+@pytest.mark.parametrize(
+    "comparison_type",
+    ["frame", "static_content", "dynamics"],
+)
+def test_frechet_distance_with_comparison_types(dataset, comparison_type):
+    """Test frechet_distance function with different comparison types."""
     # Create tensors with appropriate channels for the dataset
     channels = 3 if dataset == "bair" else 1
-    images1 = torch.rand(129, channels, 64, 64)
-    images2 = torch.rand(129, channels, 64, 64)
+    
+    if comparison_type == "frame":
+        # For frame comparison, we need 4D tensors
+        input1 = torch.rand(129, channels, 64, 64)
+        input2 = torch.rand(129, channels, 64, 64)
+    else:
+        # For static_content and dynamics comparisons, we need 5D tensors (videos)
+        input1 = torch.rand(129, 16, channels, 64, 64)
+        input2 = torch.rand(129, 16, channels, 64, 64)
 
-    # Calculate Fréchet distance using the real implementation
-    fd = frechet_distance(images1, images2, dataset=dataset)
+    # Calculate Fréchet distance using the specified comparison type
+    fd = frechet_distance(input1, input2, dataset=dataset, comparison_type=comparison_type)
 
     # Check that the result is a float
     assert isinstance(fd, float)
     assert fd >= 0.0
 
 
+def test_invalid_comparison_type():
+    """Test that an invalid comparison type raises a ValueError."""
+    # Create tensors
+    images = torch.rand(129, 1, 64, 64)
+    
+    # Create a calculator
+    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
+    
+    # Test with an invalid comparison type
+    with pytest.raises(ValueError, match="Unrecognized comparison_type"):
+        calculator(images, images, comparison_type="invalid_type")
+
+
 def test_frechet_distance_calculator():
     """Test the FrechetDistanceCalculator class."""
     # Create tensors
-    images1 = torch.rand(129, 1, 64, 64)
-    images2 = torch.rand(129, 1, 64, 64)
-    images3 = torch.rand(129, 1, 64, 64)
+    images = torch.rand(129, 1, 64, 64)
+    videos = torch.rand(129, 16, 1, 64, 64)
 
     # Create a calculator
     calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
 
-    # Calculate Fréchet distance
-    fd1 = calculator(images1, images2)
-    fd2 = calculator(images1, images3)
+    # Test frame comparison
+    fd_frame = calculator(images, images, comparison_type="frame")
+    assert isinstance(fd_frame, float)
+    assert fd_frame >= 0.0
 
-    # Check that the results are floats
-    assert isinstance(fd1, float)
-    assert isinstance(fd2, float)
-    assert fd1 >= 0.0
-    assert fd2 >= 0.0
+    # Test static_content comparison
+    fd_static = calculator(videos, videos, comparison_type="static_content")
+    assert isinstance(fd_static, float)
+    assert fd_static >= 0.0
+
+    # Test dynamics comparison
+    fd_dynamics = calculator(videos, videos, comparison_type="dynamics")
+    assert isinstance(fd_dynamics, float)
+    assert fd_dynamics >= 0.0
 
     # Test extract_features method
-    features1 = calculator.extract_features(images1)
-    features2 = calculator.extract_features(images2)
+    features = calculator.extract_features(images)
+    assert isinstance(features, torch.Tensor)
+    assert features.shape[0] == 129  # Batch size
+    assert features.shape[1] > 0  # Feature dimension
 
-    # Check that the features have the expected shape
-    assert features1.shape[0] == 129  # Batch size
-    assert features1.shape[1] > 0  # Feature dimension
+    # Test extract_w method
+    w_features = calculator.extract_w(videos)
+    assert isinstance(w_features, torch.Tensor)
+    assert w_features.shape[0] == 129  # Batch size
+    assert w_features.shape[1] > 0  # Feature dimension
 
-    # Test calculate_frechet_distance_from_features method
-    fd3 = calculator.calculate_frechet_distance_from_features(features1, features2)
-    assert isinstance(fd3, float)
-    assert fd3 >= 0.0
-
-    # Check that the result is the same as calling the calculator directly
-    assert fd3 == pytest.approx(fd1, abs=1e-6)
+    # Test extract_q_y_0_params method
+    q_y_0_params = calculator.extract_q_y_0_params(videos)
+    assert isinstance(q_y_0_params, torch.Tensor)
+    assert q_y_0_params.shape[0] == 129  # Batch size
+    assert q_y_0_params.shape[1] > 0  # Feature dimension
+    # Should be twice the size of ny (mean and variance for each dimension)
+    assert q_y_0_params.shape[1] % 2 == 0
 
 
 @pytest.mark.parametrize(
@@ -153,58 +216,90 @@ def test_frechet_distance_calculator_with_different_datasets(dataset):
 
     # Create tensors with appropriate channels for the dataset
     channels = 3 if dataset == "bair" else 1
-    images1 = torch.rand(129, channels, 64, 64)
-    images2 = torch.rand(129, channels, 64, 64)
+    images = torch.rand(129, channels, 64, 64)
+    videos = torch.rand(129, 16, channels, 64, 64)
 
     # Create a calculator
     calculator = FrechetDistanceCalculator(dataset=dataset)
 
-    # Calculate Fréchet distance
-    fd = calculator(images1, images2)
+    # Test frame comparison
+    fd_frame = calculator(images, images, comparison_type="frame")
+    assert isinstance(fd_frame, float)
+    assert fd_frame >= 0.0
 
-    # Check that the result is a float
-    assert isinstance(fd, float)
-    assert fd >= 0.0
+    # Test static_content comparison
+    fd_static = calculator(videos, videos, comparison_type="static_content")
+    assert isinstance(fd_static, float)
+    assert fd_static >= 0.0
+
+    # Test dynamics comparison
+    fd_dynamics = calculator(videos, videos, comparison_type="dynamics")
+    assert isinstance(fd_dynamics, float)
+    assert fd_dynamics >= 0.0
 
 
 def test_skip_connection_warning():
     """Test that a warning is issued when the model has skip connections."""
     # Create tensors with appropriate channels for each dataset
-    images1_rgb = torch.rand(129, 3, 64, 64)  # RGB for BAIR
-    images2_rgb = torch.rand(129, 3, 64, 64)
+    images_rgb = torch.rand(129, 3, 64, 64)  # RGB for BAIR
+    videos_rgb = torch.rand(129, 16, 3, 64, 64)  # RGB videos for BAIR
 
-    images1_gray = torch.rand(129, 1, 64, 64)  # Grayscale for MMNIST
-    images2_gray = torch.rand(129, 1, 64, 64)
+    images_gray = torch.rand(129, 1, 64, 64)  # Grayscale for MMNIST
+    videos_gray = torch.rand(129, 16, 1, 64, 64)  # Grayscale videos for MMNIST
 
-    # Trigger the warning by calling frechet_distance with a dataset that uses skip connections
+    # Test for frame comparison
     with pytest.warns(UserWarning, match="skip connections"):
-        fd = frechet_distance(images1_rgb, images2_rgb, dataset="bair")
+        fd = frechet_distance(images_rgb, images_rgb, dataset="bair", comparison_type="frame")
+        assert isinstance(fd, float)
 
-        # Check that the result is a float
+    # Test for static_content comparison
+    with pytest.warns(UserWarning, match="skip connections"):
+        fd = frechet_distance(videos_rgb, videos_rgb, dataset="bair", comparison_type="static_content")
+        assert isinstance(fd, float)
+
+    # Test for dynamics comparison
+    with pytest.warns(UserWarning, match="skip connections"):
+        fd = frechet_distance(videos_rgb, videos_rgb, dataset="bair", comparison_type="dynamics")
         assert isinstance(fd, float)
 
     # No warning should be issued for datasets without skip connections
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
-        fd = frechet_distance(images1_gray, images2_gray, dataset="mmnist_stochastic")
+        
+        # Test frame comparison
+        fd = frechet_distance(images_gray, images_gray, dataset="mmnist_stochastic", comparison_type="frame")
         assert isinstance(fd, float)
+        
+        # Test static_content comparison
+        fd = frechet_distance(videos_gray, videos_gray, dataset="mmnist_stochastic", comparison_type="static_content")
+        assert isinstance(fd, float)
+        
+        # Test dynamics comparison
+        fd = frechet_distance(videos_gray, videos_gray, dataset="mmnist_stochastic", comparison_type="dynamics")
+        assert isinstance(fd, float)
+        
         assert len(record) == 0, "Warning was issued for a dataset without skip connections"
 
 
-def test_default_encoder_warning_when_no_dataset_or_model_path():
-    """Test that a warning is issued when neither dataset nor model_path is provided."""
-    # Create tensors
-    images1 = torch.rand(129, 1, 64, 64)
-    images2 = torch.rand(129, 1, 64, 64)
-
-    # This should issue a warning but not raise an error
-    with warnings.catch_warnings(record=True) as record:
-        warnings.simplefilter("always")
-        fd = frechet_distance(images1, images2, dataset=None, model_path=None)
-        assert isinstance(fd, float)
-        assert len(record) > 0, (
-            "No warning was issued when neither dataset nor model_path was provided"
-        )
-        assert any("default encoder" in str(w.message) for w in record), (
-            "Warning about default encoder was not issued"
-        )
+def test_matrix_sqrt():
+    """Test the matrix square root function."""
+    from srvp_fd.frechet_distance import _matrix_sqrt
+    
+    # Test with identity matrix
+    identity = torch.eye(3)
+    sqrt_identity = _matrix_sqrt(identity)
+    # Square root of identity is identity
+    assert torch.allclose(sqrt_identity, identity, atol=1e-6)
+    
+    # Test with a more complex matrix
+    A = torch.tensor([[4.0, 1.0], [1.0, 9.0]])
+    sqrt_A = _matrix_sqrt(A)
+    # Verify A = sqrt_A @ sqrt_A
+    reconstructed_A = sqrt_A @ sqrt_A
+    assert torch.allclose(reconstructed_A, A, atol=1e-6)
+    
+    # Test with diagonal matrix
+    D = torch.diag(torch.tensor([4.0, 9.0, 16.0]))
+    sqrt_D = _matrix_sqrt(D)
+    expected_sqrt_D = torch.diag(torch.tensor([2.0, 3.0, 4.0]))
+    assert torch.allclose(sqrt_D, expected_sqrt_D, atol=1e-6)

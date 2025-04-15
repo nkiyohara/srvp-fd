@@ -4,7 +4,10 @@ This module contains the implementation of the SRVP model encoder used for featu
 in the Fréchet distance calculation.
 """
 
+import torch
+import torch.distributions as distrib
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 def make_conv_block(conv, activation, bn=True):
@@ -26,158 +29,58 @@ def make_conv_block(conv, activation, bn=True):
     return nn.Sequential(conv, act)
 
 
-class BaseEncoder(nn.Module):
-    """Module implementing the encoders forward method."""
+def make_lin_block(n_inp, n_out, activation):
+    """
+    Creates a linear block formed by an activation function and a linear operation.
 
-    def __init__(self, nh):
-        """Initialize the base encoder.
+    Parameters
+    ----------
+    n_inp : int
+        Input dimension.
+    n_out : int
+        Output dimension.
+    activation : str
+        'relu', 'leaky_relu', 'elu', 'sigmoid', 'tanh', or 'none'. Adds the corresponding activation function, or no
+        activation if 'none' is chosen,  before the linear operation.
 
-        Parameters
-        ----------
-        nh : int
-            Number of dimensions of the output flat vector.
-        """
-        super().__init__()
-        self.nh = nh
-
-    def forward(self, x, return_skip=False):
-        """Process input through the encoder.
-
-        Parameters
-        ----------
-        x : torch.*.Tensor
-            Encoder input.
-        return_skip : bool
-            Whether to extract and return, besides the network output, skip connections.
-
-        Returns:
-        -------
-        torch.*.Tensor
-            Encoder output as a tensor of shape (batch, size).
-        list
-            Only if return_skip is True. List of skip connections represented as torch.*.Tensor
-            corresponding to each convolutional block in reverse order (from the deepest to the
-            shallowest convolutional block).
-        """
-        skips = []
-        h = x
-
-        for layer in self.conv:
-            h = layer(h)
-            skips.append(h)
-
-        h = self.last_conv(h)
-        h = h.view(-1, self.nh)
-
-        if return_skip:
-            return h, skips
-        return h
+    Returns
+    -------
+    torch.nn.Sequential
+        Sequence of the potentially chosen activation function and the input linear block.
+    """
+    modules = []
+    if activation != 'none':
+        modules.append(activation_factory(activation))
+    modules.append(nn.Linear(n_inp, n_out))
+    return nn.Sequential(*modules)
 
 
-class DCGAN64Encoder(BaseEncoder):
-    """Module implementing the DCGAN encoder."""
+def activation_factory(name):
+    """
+    Returns the activation layer corresponding to the input activation name.
 
-    def __init__(self, nc, nh, nf):
-        """Initialize the DCGAN encoder.
+    Parameters
+    ----------
+    name : str
+        'relu', 'leaky_relu', 'elu', 'sigmoid', or 'tanh'. Adds the corresponding activation function after the
+        convolution.
 
-        Parameters
-        ----------
-        nc : int
-            Number of channels in the input data.
-        nh : int
-            Number of dimensions of the output flat vector.
-        nf : int
-            Number of filters per channel of the first convolution.
-        """
-        super().__init__(nh)
-        self.conv = nn.ModuleList(
-            [
-                make_conv_block(
-                    nn.Conv2d(nc, nf, 4, 2, 1, bias=False), activation="leaky_relu", bn=False
-                ),
-                make_conv_block(
-                    nn.Conv2d(nf, nf * 2, 4, 2, 1, bias=False), activation="leaky_relu"
-                ),
-                make_conv_block(
-                    nn.Conv2d(nf * 2, nf * 4, 4, 2, 1, bias=False), activation="leaky_relu"
-                ),
-                make_conv_block(
-                    nn.Conv2d(nf * 4, nf * 8, 4, 2, 1, bias=False), activation="leaky_relu"
-                ),
-            ]
-        )
-        self.last_conv = make_conv_block(
-            nn.Conv2d(nf * 8, nh, 4, 1, 0, bias=False), activation="tanh"
-        )
-
-
-class VGG64Encoder(BaseEncoder):
-    """Module implementing the VGG encoder."""
-
-    def __init__(self, nc, nh, nf):
-        """Initialize the VGG encoder.
-
-        Parameters
-        ----------
-        nc : int
-            Number of channels in the input data.
-        nh : int
-            Number of dimensions of the output flat vector.
-        nf : int
-            Number of filters per channel of the first convolution.
-        """
-        super().__init__(nh)
-        self.conv = nn.ModuleList(
-            [
-                nn.Sequential(
-                    make_conv_block(
-                        nn.Conv2d(nc, nf, 3, 1, 1, bias=False), activation="leaky_relu"
-                    ),
-                    make_conv_block(
-                        nn.Conv2d(nf, nf, 3, 1, 1, bias=False), activation="leaky_relu"
-                    ),
-                ),
-                nn.Sequential(
-                    nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
-                    make_conv_block(
-                        nn.Conv2d(nf, nf * 2, 3, 1, 1, bias=False), activation="leaky_relu"
-                    ),
-                    make_conv_block(
-                        nn.Conv2d(nf * 2, nf * 2, 3, 1, 1, bias=False), activation="leaky_relu"
-                    ),
-                ),
-                nn.Sequential(
-                    nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
-                    make_conv_block(
-                        nn.Conv2d(nf * 2, nf * 4, 3, 1, 1, bias=False), activation="leaky_relu"
-                    ),
-                    make_conv_block(
-                        nn.Conv2d(nf * 4, nf * 4, 3, 1, 1, bias=False), activation="leaky_relu"
-                    ),
-                    make_conv_block(
-                        nn.Conv2d(nf * 4, nf * 4, 3, 1, 1, bias=False), activation="leaky_relu"
-                    ),
-                ),
-                nn.Sequential(
-                    nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
-                    make_conv_block(
-                        nn.Conv2d(nf * 4, nf * 8, 3, 1, 1, bias=False), activation="leaky_relu"
-                    ),
-                    make_conv_block(
-                        nn.Conv2d(nf * 8, nf * 8, 3, 1, 1, bias=False), activation="leaky_relu"
-                    ),
-                    make_conv_block(
-                        nn.Conv2d(nf * 8, nf * 8, 3, 1, 1, bias=False), activation="leaky_relu"
-                    ),
-                ),
-            ]
-        )
-        self.last_conv = nn.Sequential(
-            nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
-            nn.Flatten(),
-            nn.Linear(4 * 4 * nf * 8, nh),
-            nn.Tanh(),
-        )
+    Returns
+    -------
+    torch.nn.Module
+        Element-wise activation layer.
+    """
+    if name == 'relu':
+        return nn.ReLU(inplace=True)
+    if name == 'leaky_relu':
+        return nn.LeakyReLU(0.2, inplace=True)
+    if name == 'elu':
+        return nn.ELU(inplace=True)
+    if name == 'sigmoid':
+        return nn.Sigmoid()
+    if name == 'tanh':
+        return nn.Tanh()
+    raise ValueError(f'Activation function \'{name}\' not yet implemented')
 
 
 def encoder_factory(name, _, nc, nh, nf):
@@ -189,42 +92,373 @@ def encoder_factory(name, _, nc, nh, nf):
     raise ValueError(f"Architecture {name} not supported")
 
 
+def decoder_factory(name, nx, nc, ny, nf, skip=False):
+    """
+    Creates a decoder with the given parameters according the input architecture name.
+
+    Parameters
+    ----------
+    name : str
+        'dcgan' or 'vgg'. Name of the architecture to use.
+    nx : int
+        Width and height of the video frames.
+    nc : int
+        Number of channels in the output shape.
+    ny : int
+        Number of dimensions of the input flat vector.
+    nf : int
+        Number of filters per channel of the first convolution of the mirror encoder architecture.
+
+    Returns
+    -------
+    module.conv.BaseDecoder
+        Either a module.conv.DCGAN64Decoder or a module.conv.VGG64Decoder depending on the chosen architecture.
+    """
+    if name == 'dcgan':
+        return DCGAN64Decoder(nc, ny, nf, skip)
+    if name == 'vgg':
+        return VGG64Decoder(nc, ny, nf, skip)
+    raise ValueError(f'No decoder named \'{name}\'')
+
+def make_normal_from_raw_params(raw_params, scale_stddev=1, dim=-1, eps=1e-8):
+    """
+    Creates a normal distribution from the given parameters.
+
+    Parameters
+    ----------
+    raw_params : torch.*.Tensor
+        Tensor containing the Gaussian mean and a raw scale parameter on a given dimension.
+    scale_stddev : float
+        Multiplier of the final scale parameter of the Gaussian.
+    dim : int
+        Dimensions of raw_params so that the first half corresponds to the mean, and the second half to the scale.
+    eps : float
+        Minimum possible value of the final scale parameter.
+
+    Returns
+    -------
+    torch.distributions.Normal
+        Normal distribution with the input mean and eps + softplus(raw scale) * scale_stddev as standard deviation.
+    """
+    loc, raw_scale = torch.chunk(raw_params, 2, dim)
+    assert loc.shape[dim] == raw_scale.shape[dim]
+    scale = F.softplus(raw_scale) + eps
+    normal = distrib.Normal(loc, scale * scale_stddev)
+    return normal
+
+
+def rsample_normal(raw_params, scale_stddev=1):
+    """
+    Samples from a normal distribution with given parameters.
+
+    Parameters
+    ----------
+    raw_params : torch.*.Tensor
+        Tensor containing a Gaussian mean and a raw scale parameter on its last dimension.
+    scale_stddev : float
+        Multiplier of the final scale parameter of the Gaussian.
+
+    Returns
+    -------
+    torch.*.Tensor
+        Sample from the normal distribution with the input mean and eps + softplus(raw scale) * scale_stddev as
+        standard deviation.
+    """
+    normal = make_normal_from_raw_params(raw_params, scale_stddev=scale_stddev)
+    sample = normal.rsample()
+    return sample
+class BaseEncoder(nn.Module):
+    """
+    Module implementing the encoders forward method.
+
+    Attributes
+    ----------
+    nh : int
+        Number of dimensions of the output flat vector.
+    """
+    def __init__(self, nh):
+        """
+        Parameters
+        ----------
+        nh : int
+            Number of dimensions of the output flat vector.
+        """
+        super(BaseEncoder, self).__init__()
+        self.nh = nh
+
+    def forward(self, x, return_skip=False):
+        """
+        Parameters
+        ----------
+        x : torch.*.Tensor
+            Encoder input.
+        return_skip : bool
+            Whether to extract and return, besides the network output, skip connections.
+
+        Returns
+        -------
+        torch.*.Tensor
+            Encoder output as a tensor of shape (batch, size).
+        list
+            Only if return_skip is True. List of skip connections represented as torch.*.Tensor corresponding to each
+            convolutional block in reverse order (from the deepest to the shallowest convolutional block).
+        """
+        skips = []
+        h = x
+        for layer in self.conv:
+            h = layer(h)
+            skips.append(h)
+        h = self.last_conv(h).view(-1, self.nh)
+        if return_skip:
+            return h, skips[::-1]
+        return h
+
+
+class DCGAN64Encoder(BaseEncoder):
+    """
+    Module implementing the DCGAN encoder.
+    """
+    def __init__(self, nc, nh, nf):
+        """
+        Parameters
+        ----------
+        nc : int
+            Number of channels in the input data.
+        nh : int
+            Number of dimensions of the output flat vector.
+        nf : int
+            Number of filters per channel of the first convolution.
+        """
+        super(DCGAN64Encoder, self).__init__(nh)
+        self.conv = nn.ModuleList([
+            make_conv_block(nn.Conv2d(nc, nf, 4, 2, 1, bias=False), activation='leaky_relu', bn=False),
+            make_conv_block(nn.Conv2d(nf, nf * 2, 4, 2, 1, bias=False), activation='leaky_relu'),
+            make_conv_block(nn.Conv2d(nf * 2, nf * 4, 4, 2, 1, bias=False), activation='leaky_relu'),
+            make_conv_block(nn.Conv2d(nf * 4, nf * 8, 4, 2, 1, bias=False), activation='leaky_relu')
+        ])
+        self.last_conv = make_conv_block(nn.Conv2d(nf * 8, nh, 4, 1, 0, bias=False), activation='tanh')
+
+
+class VGG64Encoder(BaseEncoder):
+    """
+    Module implementing the VGG encoder.
+    """
+    def __init__(self, nc, nh, nf):
+        """
+        Parameters
+        ----------
+        nc : int
+            Number of channels in the input data.
+        nh : int
+            Number of dimensions of the output flat vector.
+        nf : int
+            Number of filters per channel of the first convolution.
+        """
+        super(VGG64Encoder, self).__init__(nh)
+        self.conv = nn.ModuleList([
+            nn.Sequential(
+                make_conv_block(nn.Conv2d(nc, nf, 3, 1, 1, bias=False), activation='leaky_relu'),
+                make_conv_block(nn.Conv2d(nf, nf, 3, 1, 1, bias=False), activation='leaky_relu'),
+            ),
+            nn.Sequential(
+                nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+                make_conv_block(nn.Conv2d(nf, nf * 2, 3, 1, 1, bias=False), activation='leaky_relu'),
+                make_conv_block(nn.Conv2d(nf * 2, nf * 2, 3, 1, 1, bias=False), activation='leaky_relu'),
+            ),
+            nn.Sequential(
+                nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+                make_conv_block(nn.Conv2d(nf * 2, nf * 4, 3, 1, 1, bias=False), activation='leaky_relu'),
+                make_conv_block(nn.Conv2d(nf * 4, nf * 4, 3, 1, 1, bias=False), activation='leaky_relu'),
+                make_conv_block(nn.Conv2d(nf * 4, nf * 4, 3, 1, 1, bias=False), activation='leaky_relu'),
+            ),
+            nn.Sequential(
+                nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+                make_conv_block(nn.Conv2d(nf * 4, nf * 8, 3, 1, 1, bias=False), activation='leaky_relu'),
+                make_conv_block(nn.Conv2d(nf * 8, nf * 8, 3, 1, 1, bias=False), activation='leaky_relu'),
+                make_conv_block(nn.Conv2d(nf * 8, nf * 8, 3, 1, 1, bias=False), activation='leaky_relu'),
+            )
+        ])
+        self.last_conv = nn.Sequential(
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+            make_conv_block(nn.Conv2d(nf * 8, nh, 4, 1, 0, bias=False), activation='tanh')
+        )
+
+class BaseDecoder(nn.Module):
+    """
+    Module implementing the decoders forward method.
+
+    Attributes
+    ----------
+    ny : int
+        Number of dimensions of the output flat vector.
+    skip : bool
+        Whether to include skip connections into the decoder.
+    """
+    def __init__(self, ny, skip):
+        """
+        Parameters
+        ----------
+        ny : int
+            Number of dimensions of the input flat vector.
+        """
+        super(BaseDecoder, self).__init__()
+        self.ny = ny
+        self.skip = skip
+
+    def forward(self, z, skip=None, sigmoid=True):
+        """
+        Parameters
+        ----------
+        z : torch.*.Tensor
+            Decoder input.
+        skip : list
+            List of torch.*.Tensor representing skip connections in the same order as the decoder convolutional
+            blocks. Must be None when skip connections are not allowed.
+        sigmoid : bool
+            Whether to apply a sigmoid at the end of the decoder.
+
+        Returns
+        -------
+        torch.*.Tensor
+            Decoder output as a frame of shape (batch, channels, width, height).
+        """
+        assert skip is None and not self.skip or self.skip and skip is not None
+        h = self.first_upconv(z.view(*z.shape, 1, 1))
+        for i, layer in enumerate(self.conv):
+            if skip is not None:
+                h = torch.cat([h, skip[i]], 1)
+            h = layer(h)
+        x_ = h
+        if sigmoid:
+            x_ = torch.sigmoid(x_)
+        return x_
+
+
+class DCGAN64Decoder(BaseDecoder):
+    """
+    Module implementing the DCGAN decoder.
+    """
+    def __init__(self, nc, ny, nf, skip):
+        """
+        Parameters
+        ----------
+        nc : int
+            Number of channels in the output shape.
+        ny : int
+            Number of dimensions of the input flat vector.
+        nf : int
+            Number of filters per channel of the first convolution of the mirror encoder architecture.
+        skip : list
+            List of torch.*.Tensor representing skip connections in the same order as the decoder convolutional
+            blocks. Must be None when skip connections are not allowed.
+        """
+        super(DCGAN64Decoder, self).__init__(ny, skip)
+        # decoder
+        coef = 2 if skip else 1
+        self.first_upconv = make_conv_block(nn.ConvTranspose2d(ny, nf * 8, 4, 1, 0, bias=False), activation='leaky_relu')
+        self.conv = nn.ModuleList([
+            make_conv_block(nn.ConvTranspose2d(nf * 8 * coef, nf * 4, 4, 2, 1, bias=False), activation='leaky_relu'),
+            make_conv_block(nn.ConvTranspose2d(nf * 4 * coef, nf * 2, 4, 2, 1, bias=False), activation='leaky_relu'),
+            make_conv_block(nn.ConvTranspose2d(nf * 2 * coef, nf, 4, 2, 1, bias=False), activation='leaky_relu'),
+            nn.ConvTranspose2d(nf * coef, nc, 4, 2, 1, bias=False),
+        ])
+
+
+class VGG64Decoder(BaseDecoder):
+    """
+    Module implementing the VGG decoder.
+    """
+    def __init__(self, nc, ny, nf, skip):
+        """
+        Parameters
+        ----------
+        nc : int
+            Number of channels in the output shape.
+        ny : int
+            Number of dimensions of the input flat vector.
+        nf : int
+            Number of filters per channel of the first convolution of the mirror encoder architecture.
+        skip : list
+            List of torch.*.Tensor representing skip connections in the same order as the decoder convolutional
+            blocks. Must be None when skip connections are not allowed.
+        """
+        super(VGG64Decoder, self).__init__(ny, skip)
+        # decoder
+        coef = 2 if skip else 1
+        self.first_upconv = nn.Sequential(
+            make_conv_block(nn.ConvTranspose2d(ny, nf * 8, 4, 1, 0, bias=False), activation='leaky_relu'),
+            nn.Upsample(scale_factor=2, mode='nearest'),
+        )
+        self.conv = nn.ModuleList([
+            nn.Sequential(
+                make_conv_block(nn.Conv2d(nf * 8 * coef, nf * 8, 3, 1, 1, bias=False), activation='leaky_relu'),
+                make_conv_block(nn.Conv2d(nf * 8, nf * 8, 3, 1, 1, bias=False), activation='leaky_relu'),
+                make_conv_block(nn.Conv2d(nf * 8, nf * 4, 3, 1, 1, bias=False), activation='leaky_relu'),
+                nn.Upsample(scale_factor=2, mode='nearest'),
+            ),
+            nn.Sequential(
+                make_conv_block(nn.Conv2d(nf * 4 * coef, nf * 4, 3, 1, 1, bias=False), activation='leaky_relu'),
+                make_conv_block(nn.Conv2d(nf * 4, nf * 4, 3, 1, 1, bias=False), activation='leaky_relu'),
+                make_conv_block(nn.Conv2d(nf * 4, nf * 2, 3, 1, 1, bias=False), activation='leaky_relu'),
+                nn.Upsample(scale_factor=2, mode='nearest'),
+            ),
+            nn.Sequential(
+                make_conv_block(nn.Conv2d(nf * 2 * coef, nf * 2, 3, 1, 1, bias=False), activation='leaky_relu'),
+                make_conv_block(nn.Conv2d(nf * 2, nf, 3, 1, 1, bias=False), activation='leaky_relu'),
+                nn.Upsample(scale_factor=2, mode='nearest'),
+            ),
+            nn.Sequential(
+                make_conv_block(nn.Conv2d(nf * coef, nf, 3, 1, 1, bias=False), activation='leaky_relu'),
+                nn.ConvTranspose2d(nf, nc, 3, 1, 1, bias=False),
+            ),
+        ])
+
+
+
 class MLP(nn.Module):
-    """Simple MLP with ReLU activations."""
-
-    def __init__(self, nin, nout, nh=512, nlayers=3):
-        """Initialize the MLP.
-
-        Args:
-            nin: Number of input dimensions
-            nout: Number of output dimensions
-            nh: Number of hidden dimensions
-            nlayers: Number of hidden layers
+    """
+    Module implementing an MLP.
+    """
+    def __init__(self, n_inp, n_hid, n_out, n_layers, activation='relu'):
+        """
+        Parameters
+        ----------
+        n_inp : int
+            Input dimension.
+        n_hid : int
+            Number of dimensions in intermediary layers.
+        n_out : int
+            Output dimension.
+        n_layers : int
+            Number of layers in the MLP.
+        activation : str
+            'relu', 'leaky_relu', 'elu', 'sigmoid', or 'tanh'. Adds the corresponding activation function before every
+            linear operation but the first one.
         """
         super().__init__()
-        self.nin = nin
-        self.nout = nout
-        self.nh = nh
-        self.nlayers = nlayers
-
-        if nlayers == 0:
-            self.net = nn.Linear(nin, nout)
-        else:
-            net = []
-            for i in range(nlayers):
-                if i == 0:
-                    net.append(nn.Linear(nin, nh))
-                    net.append(nn.ReLU(inplace=True))
-                elif i == nlayers - 1:
-                    net.append(nn.Linear(nh, nout))
-                else:
-                    net.append(nn.Linear(nh, nh))
-                    net.append(nn.ReLU(inplace=True))
-            self.net = nn.Sequential(*net)
+        assert n_hid == 0 or n_layers > 1
+        modules = [
+            make_lin_block(n_inp if il == 0 else n_hid, n_out if il == n_layers - 1 else n_hid,
+                           activation if il > 0 else 'none')
+            for il in range(n_layers)
+        ]
+        self.module = nn.Sequential(*modules)
 
     def forward(self, x):
-        """Forward pass through the MLP."""
-        return self.net(x)
+        """
+        Output of the MLP.
+
+        Parameters
+        ----------
+        x : torch.*.Tensor
+            Input of shape (batch, n_inp).
+
+        Returns
+        -------
+        torch.*.Tensor
+            Output of shape (batch, n_out).
+        """
+        return self.module(x)
 
 
 class StochasticLatentResidualVideoPredictor(nn.Module):
@@ -292,32 +526,129 @@ class StochasticLatentResidualVideoPredictor(nn.Module):
         self.nlayers_res = nlayers_res
         self.archi = archi
 
-        # Create encoder
         self.encoder = encoder_factory(archi, nx, nc, nhx, nf)
+        self.decoder = decoder_factory(archi, nx, nc, nh_inf + ny, nf, skipco)
+        # -- Content
+        self.w_proj = nn.Sequential(nn.Linear(nhx, nh_inf), nn.ReLU(inplace=True))
+        self.w_inf = nn.Sequential(nn.Linear(nh_inf, nh_inf), nn.Tanh())
+        # -- Inference of y
+        self.q_y = MLP(n_inp=nhx * nt_inf, n_hid=nh_inf, n_out=ny * 2, n_layers=nlayers_inf)
+        # -- Inference of z
+        self.inf_z = nn.LSTM(nhx, nh_inf, 1)
+        self.q_z = nn.Linear(nh_inf, nz * 2)
+        # -- Prior
+        self.p_z = MLP(n_inp=ny, n_hid=nh_res, n_out=nz * 2, n_layers=nlayers_res)
+        # -- Prediction
+        self.dynamics = MLP(n_inp=ny + nz, n_hid=nh_res, n_out=ny, n_layers=nlayers_res)  # Residual function
 
-        # For the purpose of this package, we only need the encoder part
-        # The rest of the model is not implemented here as we only need the encoder
-        # for feature extraction
 
     def encode(self, x):
-        """Encode a batch of frames.
+        """
+        Frame-wise encoding of a sequence of images. Returns the encodings and skip connections.
 
         Parameters
         ----------
         x : torch.*.Tensor
-            Tensor of shape (batch, length, nc, nx, nx) containing a batch of videos.
+            Video / sequence of images to encode, of shape (length, batch, channels, width, height).
 
-        Returns:
+        Returns
         -------
         torch.*.Tensor
             Encoding of frames, of shape (length, batch, nhx), where length is the number of frames.
+        list
+            List of torch.*.Tensor representing skip connections. Must be None when skip connections are not allowed.
+            Skip connections are extracted from the last frame in testing mode, and from a random frame during
+            training.
         """
-        batch_size, seq_len = x.shape[0], x.shape[1]
-        # Reshape to (batch * seq_len, nc, nx, nx)
-        x_reshape = x.reshape(-1, self.nc, self.nx, self.nx)
+        nt, bsz, x_shape = x.shape[0], x.shape[1], x.shape[2:]
+        # Flatten the temporal dimension (for convolution encoders)
+        x_flat = x.reshape(nt * bsz, *x_shape)
         # Encode
-        h = self.encoder(x_reshape)
-        # Reshape back to (seq_len, batch, nhx)
-        h = h.reshape(batch_size, seq_len, self.nhx)
-        h = h.permute(1, 0, 2)
-        return h.clone()
+        hx_flat, skips = self.encoder(x_flat, return_skip=True)
+        # Reshape with temporal dimension
+        hx = hx_flat.view(nt, bsz, self.nhx)
+        # Skip connections
+        if self.skipco:
+            if self.training:
+                # When training, take a random frame to compute the skip connections
+                t = torch.randint(nt, size=(bsz,)).to(hx.device)
+                index = torch.arange(bsz).to(hx.device)
+                skips = [s.view(nt, bsz, *s.shape[1:])[t, index] for s in skips]
+            else:
+                # When testing, choose the last frame
+                skips = [s.view(nt, bsz, *s.shape[1:])[-1] for s in skips]
+        else:
+            skips = None
+        return hx, skips
+
+    def infer_w(self, hx):
+        """
+        Computes the content variable from the data with a permutation-invariant network.
+
+        Parameters
+        ----------
+        hx : torch.*.Tensor
+            Encoding of frames, of shape (length, batch, nhx), where length is the number of frames.
+
+        Returns
+        -------
+        torch.*.Tensor
+            Output sequence of frames, of shape (length, batch, channels, width, height).
+        """
+        nt, bsz = hx.shape[0], hx.shape[1]
+        if self.training:
+            # When training, pick w conditioning on random frames
+            t = torch.stack([torch.randperm(nt)[:self.nt_inf] for _ in range(bsz)], 1).to(hx.device)
+            index = torch.arange(bsz).repeat(self.nt_inf, 1).to(hx.device)
+            h = hx[t.view(-1), index.view(-1)].view(self.nt_inf, bsz, self.nhx)
+        else:
+            # Otherwise, choose the last nt_inf random frames
+            h = hx[-self.nt_inf:]
+        # Permutation-invariant appplication
+        h = self.w_proj(h)
+        h = h.sum(0)
+        w = self.w_inf(h)
+        return w
+
+
+    def infer_y(self, hx):
+        """
+        Infers y_0 (first state variable) from the data.
+
+        Parameters
+        ----------
+        hx : torch.*.Tensor
+            Encoding of frames, of shape (length, batch, nhx), where length is the number of conditioning frames used
+            to infer y_0.
+
+        Returns
+        -------
+        torch.*.Tensor
+            Initial state condition y_0, of shape (batch, ny).
+        torch.*.Tensor
+            Gaussian parameters of the approximate posterior for the initial state condition y_0, of shape
+            (batch, 2 * ny).
+        """
+        q_y_0_params = self.q_y(hx.permute(1, 0, 2).reshape(hx.shape[1], self.nt_inf * self.nhx))
+        y_0 = rsample_normal(q_y_0_params)
+        return y_0, q_y_0_params
+
+    def infer_z(self, hx):
+        """
+        Infers a z variable from the data.
+
+        Parameters
+        ----------
+        hx : torch.*.Tensor
+            Encoding of frame t, of shape (batch, nhx), so that z is inferred from timestep t.
+
+        Returns
+        -------
+        torch.*.Tensor
+            Inferred variable z, of shape (batch, nz).
+        torch.*.Tensor
+            Gaussian parameters of the approximate posterior of z, of shape (nt - 1, batch, 2 * nz).
+        """
+        q_z_params = self.q_z(hx)
+        z = rsample_normal(q_z_params)
+        return z, q_z_params

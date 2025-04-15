@@ -48,10 +48,10 @@ features_similar1 = calculator.extract_features(similar_images1)
 features_similar2 = calculator.extract_features(similar_images2)
 
 # Calculate Fréchet distance from features
-fd_random_features = calculator.calculate_frechet_distance_from_features(
+fd_random_features = calculator._calculate_frechet_distance_from_features(
     features_random1, features_random2
 )
-fd_similar_features = calculator.calculate_frechet_distance_from_features(
+fd_similar_features = calculator._calculate_frechet_distance_from_features(
     features_similar1, features_similar2
 )
 
