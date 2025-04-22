@@ -55,15 +55,15 @@ fd3 = calc(videos1, videos2, comparison_type="dynamics")
 
 ### Comparison Types
 
-| `comparison_type` | Latent signal (SRVP notation) | Captures | Paper section |
-|-------------------|--------------------------------|----------|---------------|
-| `"frame"` | Per‑frame embedding $`\tilde{\mathbf x}_t = h_\phi(\mathbf{x}_t)`$ | Appearance of a **single** frame (no temporal context) | §3, Eq.&nbsp;6 |
-| `"static_content"` | Global content vector $`\mathbf{w} = c_\psi(\tilde{\mathbf{x}}_{i_1}, …, \tilde{\mathbf{x}}_{i_k})`$ pooled from the first *k* conditioning frames | Scene or object identity that remains constant throughout the clip | §3.2 |
-| `"dynamics"` | Parameters $`(\boldsymbol{\mu}_\theta,\boldsymbol{\sigma}_\theta)`$ of the initial latent‑state distribution that seeds the residual dynamics $`f_\theta`$ | Motion patterns and stochastic variation over time | §3.1, Eq.&nbsp;1 |
+| `comparison_type` | Latent signal (SRVP notation) | Captures |
+|-------------------|--------------------------------|----------|
+| `"frame"` | Per‑frame embedding $`\tilde{\mathbf x}_t = h_\phi(\mathbf{x}_t)`$ | Appearance of a **single** frame (no temporal context) |
+| `"static_content"` | Global content vector $`\mathbf{w} = c_\psi(\tilde{\mathbf{x}}_{i_1}, …, \tilde{\mathbf{x}}_{i_k})`$ pooled from the first *k* conditioning frames | Scene or object identity that remains constant throughout the clip |
+| `"dynamics"` | Parameters $`(\boldsymbol{\mu}_\theta,\boldsymbol{\sigma}_\theta)`$ of the initial latent‑state distribution that seeds the residual dynamics $`f_\theta`$ | Motion patterns and stochastic variation over time |
 
-*For precise mathematical definitions consult Eqs.&nbsp;(1)–(6) and Table&nbsp;1 of the&nbsp;[SRVP paper](https://arxiv.org/abs/2002.09219) (Franceschi&nbsp;*et al.*, 2020) and the&nbsp;[official implementation](https://github.com/edouardelasalles/srvp).*
+*For precise mathematical definitions consult [SRVP paper](https://arxiv.org/abs/2002.09219) (Franceschi&nbsp;*et al.*, 2020) and the&nbsp;[official implementation](https://github.com/edouardelasalles/srvp).*
 
-> **Gaussian‑mixture approximation**: For the `"dynamics"` comparison we collapse the batch of per‑sample Gaussians into a single Gaussian using the closed‑form mean and covariance of an equal‑weighted mixture.
+> **Gaussian‑mixture approximation**: For the `"dynamics"` comparison we collapse the batch of per‑sample Gaussians into a single Gaussian using the closed‑form mean and covariance of an equal‑weighted mixture for the Fréchet distance computation.
 
 ## Features
 
