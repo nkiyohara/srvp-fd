@@ -7,15 +7,14 @@ video frames using the encoder from the SRVP model to extract features.
 import json
 import os
 import warnings
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal, Tuple, Union
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 from huggingface_hub import hf_hub_download
 
 # Import the SRVP model components
-from .srvp_model import DCGAN64Encoder, StochasticLatentResidualVideoPredictor
+from .srvp_model import StochasticLatentResidualVideoPredictor
 
 # Define dataset options as Literal type
 DatasetType = Literal["mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"]
@@ -30,27 +29,25 @@ DATASET_PATHS = {
 }
 
 
-def _matrix_sqrt(A: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
-    """Compute the square root of a positive definite matrix.
-    
+def _matrix_sqrt(matrix: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
+    """Compute the square root of a positive‑definite matrix.
+
     Args:
-        A: A positive definite matrix
-        eps: Small epsilon value for numerical stability
-        
+        matrix: A positive‑definite matrix.
+        eps: Small epsilon value for numerical stability.
+
     Returns:
-        Square root of the matrix
+        The matrix square root.
     """
     # Add a small value to the diagonal for numerical stability
-    A = A + torch.eye(A.size(0), device=A.device) * eps
-    
+    matrix = matrix + torch.eye(matrix.size(0), device=matrix.device) * eps
+
     # Compute the eigendecomposition
-    eigenvalues, eigenvectors = torch.linalg.eigh(A)
-    
+    eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
+
     # Compute the square root using the eigendecomposition
     sqrt_eigenvalues = torch.sqrt(torch.clamp(eigenvalues, min=eps))
-    sqrt_matrix = eigenvectors @ torch.diag(sqrt_eigenvalues) @ eigenvectors.T
-    
-    return sqrt_matrix
+    return eigenvectors @ torch.diag(sqrt_eigenvalues) @ eigenvectors.T
 
 
 def _calculate_frechet_distance(
@@ -72,7 +69,7 @@ def _calculate_frechet_distance(
 
     # Product of covariances
     covmean = _matrix_sqrt(sigma1 @ sigma2)
-    
+
     # If covmean has any non-finite values, retry with a diagonal offset
     if not torch.isfinite(covmean).all():
         offset = torch.eye(sigma1.size(0), device=sigma1.device) * 1e-6
@@ -81,14 +78,11 @@ def _calculate_frechet_distance(
     # Calculate Fréchet distance
     tr_covmean = torch.trace(covmean)
     fd = float((diff @ diff) + torch.trace(sigma1) + torch.trace(sigma2) - 2 * tr_covmean)
-    
+
     return max(fd, 0.0)  # Ensure non-negative result due to numerical precision
 
 
-
-def _get_model(
-    dataset: DatasetType
-) -> Tuple[StochasticLatentResidualVideoPredictor, dict]:
+def _get_model(dataset: DatasetType) -> Tuple[StochasticLatentResidualVideoPredictor, dict]:
     """Load the SRVP model and its configuration.
 
     Args:
@@ -159,7 +153,7 @@ def _get_model(
             archi=config["archi"],
         )
 
-        state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
+        state_dict = torch.load(model_path, map_location="cpu", weights_only=False)
         model.load_state_dict(state_dict)
         model.eval()
 
@@ -171,7 +165,6 @@ def _get_model(
             f"Could not download or load the model for dataset '{dataset}' from HuggingFace. "
             "Please check your internet connection or provide a local model_path."
         ) from e
-
 
 
 def _validate_input_shapes(images1: torch.Tensor, images2: torch.Tensor) -> None:
@@ -247,9 +240,11 @@ def _validate_video_input_shapes(videos1: torch.Tensor, videos2: torch.Tensor, m
             f"Sample size must be greater than 128 (feature dimension). "
             f"Got {videos1.shape[0]} and {videos2.shape[0]}."
         )
-        
+
     # Check that sequence length is at least 10 frames
-    nt_inf = getattr(model, 'nt_inf', 10) if model is not None else 10  # Default to 10 if not specified
+    nt_inf = (
+        getattr(model, "nt_inf", 10) if model is not None else 10
+    )  # Default to 10 if not specified
     if videos1.shape[1] < nt_inf or videos2.shape[1] < nt_inf:
         raise ValueError(
             f"Sequence length should be at least {nt_inf} frames for model inference. "
@@ -304,11 +299,13 @@ class FrechetDistanceCalculator:
         Args:
             images1: First set of images/videos.
                 For "frame" comparison: Shape [batch_size, channels, height, width]
-                For "static_content"/"dynamics" comparisons: Shape [batch_size, seq_length, channels, height, width]
+                For "static_content"/"dynamics" comparisons:
+                    Shape [batch_size, seq_length, channels, height, width]
             images2: Second set of images/videos with same shape requirements as images1.
             comparison_type: The type of Fréchet distance to calculate:
                 - "frame": Compare frame-wise visual features from encoder (spatial patterns)
-                - "static_content": Compare static content information (w) that captures scene/object appearance
+                - "static_content": Compare static content information (w) that
+                    captures scene/object appearance
                 - "dynamics": Compare dynamics information (q_y_0) that captures motion patterns
 
         Returns:
@@ -328,23 +325,27 @@ class FrechetDistanceCalculator:
 
             # Calculate Fréchet distance
             return self._calculate_frechet_distance_from_features(features1, features2)
-        
-        elif comparison_type in ["static_content", "dynamics"]:
+
+        if comparison_type in ["static_content", "dynamics"]:
             # Validate video input shapes
             _validate_video_input_shapes(images1, images2, self.model)
-            
+
             # Extract w or q_y_0_params
             if comparison_type == "static_content":
                 features1 = self._extract_w(images1)
                 features2 = self._extract_w(images2)
                 return self._calculate_frechet_distance_from_features(features1, features2)
-            else:  # comparison_type == "dynamics"
-                q_y_0_params1 = self._extract_q_y_0_params(images1)
-                q_y_0_params2 = self._extract_q_y_0_params(images2)
-                return self._calculate_frechet_distance_from_gaussian_params(q_y_0_params1, q_y_0_params2)
-        
-        else:
-            raise ValueError(f"Unrecognized comparison_type '{comparison_type}'. Must be one of: 'frame', 'static_content', 'dynamics'")
+            # comparison_type == "dynamics"
+            q_y_0_params1 = self._extract_q_y_0_params(images1)
+            q_y_0_params2 = self._extract_q_y_0_params(images2)
+            return self._calculate_frechet_distance_from_gaussian_params(
+                q_y_0_params1, q_y_0_params2
+            )
+
+        raise ValueError(
+            f"Unrecognized comparison_type '{comparison_type}'. Must be one of: "
+            "'frame', 'static_content', 'dynamics'"
+        )
 
     def _extract_w(self, videos: torch.Tensor) -> torch.Tensor:
         """Extract static content information (w) from videos.
@@ -355,18 +356,14 @@ class FrechetDistanceCalculator:
         Returns:
             Tensor of w features with shape [batch_size, feature_dim]
         """
-        batch_size, seq_len = videos.shape[0], videos.shape[1]
-        
         # Permute to [seq_len, batch_size, channels, height, width]
         videos_permuted = videos.permute(1, 0, 2, 3, 4)
-        
+
         with torch.no_grad():
             # Encode frames
             hx, _ = self.model.encode(videos_permuted.to(self.device))
             # Extract static content w
-            w = self.model.infer_w(hx)
-            
-        return w
+            return self.model.infer_w(hx)
 
     def _extract_q_y_0_params(self, videos: torch.Tensor) -> torch.Tensor:
         """Extract dynamics information (q_y_0_params) from videos.
@@ -377,18 +374,15 @@ class FrechetDistanceCalculator:
         Returns:
             Tensor of q_y_0_params with shape [batch_size, 2*ny]
         """
-        batch_size, seq_len = videos.shape[0], videos.shape[1]
-        
         # Permute to [seq_len, batch_size, channels, height, width]
         videos_permuted = videos.permute(1, 0, 2, 3, 4)
-        
+
         with torch.no_grad():
             # Encode frames
             hx, _ = self.model.encode(videos_permuted.to(self.device))
             # Extract dynamics parameters
-            _, q_y_0_params = self.model.infer_y(hx[:self.model.nt_inf])
-            
-        return q_y_0_params
+            _, q_y_0_params = self.model.infer_y(hx[: self.model.nt_inf])
+            return q_y_0_params
 
     def _calculate_frechet_distance_from_features(
         self, features1: torch.Tensor, features2: torch.Tensor
@@ -407,7 +401,7 @@ class FrechetDistanceCalculator:
         # Covariance calculation
         centered1 = features1 - mu1.unsqueeze(0)
         sigma1 = (centered1.T @ centered1) / (features1.size(0) - 1)
-        
+
         mu2 = torch.mean(features2, dim=0)
         centered2 = features2 - mu2.unsqueeze(0)
         sigma2 = (centered2.T @ centered2) / (features2.size(0) - 1)
@@ -435,48 +429,48 @@ class FrechetDistanceCalculator:
         ny = params1.shape[1] // 2
         mu1_samples = params1[:, :ny]  # Shape: [batch_size, ny]
         raw_scale1_samples = params1[:, ny:]  # Shape: [batch_size, ny]
-        
+
         mu2_samples = params2[:, :ny]
         raw_scale2_samples = params2[:, ny:]
-        
+
         # Process raw_scale with softplus to get scale (standard deviation)
         # This matches the SRVP utils.py implementation
         # Use the same eps value as in the original implementation
         eps = 1e-8
         scale1_samples = F.softplus(raw_scale1_samples) + eps  # standard deviation
         scale2_samples = F.softplus(raw_scale2_samples) + eps  # standard deviation
-        
+
         # Convert to variance for covariance calculation
-        var1_samples = scale1_samples ** 2
-        var2_samples = scale2_samples ** 2
-        
+        var1_samples = scale1_samples**2
+        var2_samples = scale2_samples**2
+
         # Moment matching for the first mixture
         # Mean of the mixture is the average of the component means
         mu1 = torch.mean(mu1_samples, dim=0)  # Shape: [ny]
-        
+
         # Covariance of the mixture combines component covariances and means
         # Cov = E[Cov] + Cov[E]
         # E[Cov] is average of component covariances
         # Cov[E] is covariance of component means
-        
+
         # Average of component variances (diagonal covariance matrices)
         avg_var1 = torch.mean(var1_samples, dim=0)
-        E_cov1 = torch.diag(avg_var1)
-        
+        e_cov1 = torch.diag(avg_var1)
+
         # Covariance of component means
         centered_mu1 = mu1_samples - mu1.unsqueeze(0)
-        cov_E1 = (centered_mu1.T @ centered_mu1) / (mu1_samples.size(0) - 1)
-        sigma1 = E_cov1 + cov_E1
-        
+        cov_e1 = (centered_mu1.T @ centered_mu1) / (mu1_samples.size(0) - 1)
+        sigma1 = e_cov1 + cov_e1
+
         # Repeat for the second mixture
         mu2 = torch.mean(mu2_samples, dim=0)
         avg_var2 = torch.mean(var2_samples, dim=0)
-        E_cov2 = torch.diag(avg_var2)
-        
+        e_cov2 = torch.diag(avg_var2)
+
         centered_mu2 = mu2_samples - mu2.unsqueeze(0)
-        cov_E2 = (centered_mu2.T @ centered_mu2) / (mu2_samples.size(0) - 1)
-        sigma2 = E_cov2 + cov_E2
-        
+        cov_e2 = (centered_mu2.T @ centered_mu2) / (mu2_samples.size(0) - 1)
+        sigma2 = e_cov2 + cov_e2
+
         # Calculate Fréchet distance between the two Gaussian mixtures
         return _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
 
@@ -501,9 +495,7 @@ class FrechetDistanceCalculator:
 
         # Extract features
         with torch.no_grad():
-            features = self.model.encoder(images.to(self.device))
-
-        return features
+            return self.model.encoder(images.to(self.device))
 
     def extract_w(self, videos: torch.Tensor) -> torch.Tensor:
         """Extract static content information (w) from videos.
@@ -542,13 +534,15 @@ def frechet_distance(
     Args:
         images1: First set of images/videos.
             For "frame" comparison: Shape [batch_size, channels, height, width]
-            For "static_content"/"dynamics" comparisons: Shape [batch_size, seq_length, channels, height, width]
+            For "static_content"/"dynamics" comparisons:
+                Shape [batch_size, seq_length, channels, height, width]
         images2: Second set of images/videos with same shape requirements as images1.
         dataset: The dataset to use for feature extraction.
             Options: "mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"
         comparison_type: The type of Fréchet distance to calculate:
             - "frame": Compare frame-wise visual features from encoder (spatial patterns)
-            - "static_content": Compare static content information (w) that captures scene/object appearance
+            - "static_content": Compare static content information (w) that
+                captures scene/object appearance
             - "dynamics": Compare dynamics information (q_y_0) that captures motion patterns
         device: Device to use for computation. If None, will use CUDA if available, otherwise CPU.
 

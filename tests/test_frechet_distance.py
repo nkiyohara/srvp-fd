@@ -128,7 +128,7 @@ def test_frechet_distance_with_comparison_types(dataset, comparison_type):
     """Test frechet_distance function with different comparison types."""
     # Create tensors with appropriate channels for the dataset
     channels = 3 if dataset == "bair" else 1
-    
+
     if comparison_type == "frame":
         # For frame comparison, we need 4D tensors
         input1 = torch.rand(129, channels, 64, 64)
@@ -150,10 +150,10 @@ def test_invalid_comparison_type():
     """Test that an invalid comparison type raises a ValueError."""
     # Create tensors
     images = torch.rand(129, 1, 64, 64)
-    
+
     # Create a calculator
     calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
-    
+
     # Test with an invalid comparison type
     with pytest.raises(ValueError, match="Unrecognized comparison_type"):
         calculator(images, images, comparison_type="invalid_type")
@@ -211,8 +211,8 @@ def test_frechet_distance_calculator():
 def test_frechet_distance_calculator_with_different_datasets(dataset):
     """Test FrechetDistanceCalculator with different datasets."""
     # Skip tests for datasets other than mmnist_stochastic to speed up tests
-    if dataset != "mmnist_stochastic":
-        pytest.skip(f"Skipping test for dataset {dataset} to speed up tests")
+    # if dataset != "mmnist_stochastic":
+    #     pytest.skip(f"Skipping test for dataset {dataset} to speed up tests")
 
     # Create tensors with appropriate channels for the dataset
     channels = 3 if dataset == "bair" else 1
@@ -254,7 +254,9 @@ def test_skip_connection_warning():
 
     # Test for static_content comparison
     with pytest.warns(UserWarning, match="skip connections"):
-        fd = frechet_distance(videos_rgb, videos_rgb, dataset="bair", comparison_type="static_content")
+        fd = frechet_distance(
+            videos_rgb, videos_rgb, dataset="bair", comparison_type="static_content"
+        )
         assert isinstance(fd, float)
 
     # Test for dynamics comparison
@@ -265,41 +267,47 @@ def test_skip_connection_warning():
     # No warning should be issued for datasets without skip connections
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
-        
+
         # Test frame comparison
-        fd = frechet_distance(images_gray, images_gray, dataset="mmnist_stochastic", comparison_type="frame")
+        fd = frechet_distance(
+            images_gray, images_gray, dataset="mmnist_stochastic", comparison_type="frame"
+        )
         assert isinstance(fd, float)
-        
+
         # Test static_content comparison
-        fd = frechet_distance(videos_gray, videos_gray, dataset="mmnist_stochastic", comparison_type="static_content")
+        fd = frechet_distance(
+            videos_gray, videos_gray, dataset="mmnist_stochastic", comparison_type="static_content"
+        )
         assert isinstance(fd, float)
-        
+
         # Test dynamics comparison
-        fd = frechet_distance(videos_gray, videos_gray, dataset="mmnist_stochastic", comparison_type="dynamics")
+        fd = frechet_distance(
+            videos_gray, videos_gray, dataset="mmnist_stochastic", comparison_type="dynamics"
+        )
         assert isinstance(fd, float)
-        
+
         assert len(record) == 0, "Warning was issued for a dataset without skip connections"
 
 
 def test_matrix_sqrt():
     """Test the matrix square root function."""
     from srvp_fd.frechet_distance import _matrix_sqrt
-    
+
     # Test with identity matrix
     identity = torch.eye(3)
     sqrt_identity = _matrix_sqrt(identity)
     # Square root of identity is identity
     assert torch.allclose(sqrt_identity, identity, atol=1e-6)
-    
+
     # Test with a more complex matrix
-    A = torch.tensor([[4.0, 1.0], [1.0, 9.0]])
-    sqrt_A = _matrix_sqrt(A)
+    matrix = torch.tensor([[4.0, 1.0], [1.0, 9.0]])
+    sqrt_matrix = _matrix_sqrt(matrix)
     # Verify A = sqrt_A @ sqrt_A
-    reconstructed_A = sqrt_A @ sqrt_A
-    assert torch.allclose(reconstructed_A, A, atol=1e-6)
-    
+    reconstructed_matrix = sqrt_matrix @ sqrt_matrix
+    assert torch.allclose(reconstructed_matrix, matrix, atol=1e-6)
+
     # Test with diagonal matrix
-    D = torch.diag(torch.tensor([4.0, 9.0, 16.0]))
-    sqrt_D = _matrix_sqrt(D)
-    expected_sqrt_D = torch.diag(torch.tensor([2.0, 3.0, 4.0]))
-    assert torch.allclose(sqrt_D, expected_sqrt_D, atol=1e-6)
+    diag = torch.diag(torch.tensor([4.0, 9.0, 16.0]))
+    sqrt_diag = _matrix_sqrt(diag)
+    expected_sqrt_diag = torch.diag(torch.tensor([2.0, 3.0, 4.0]))
+    assert torch.allclose(sqrt_diag, expected_sqrt_diag, atol=1e-6)
