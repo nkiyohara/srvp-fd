@@ -118,7 +118,7 @@ def test_frechet_distance_video_input_validation(shape1, shape2, expected_error)
 
 @pytest.mark.parametrize(
     "dataset",
-    ["mmnist_stochastic"],  # Use only one dataset to speed up tests
+    list(DATASET_PATHS.keys()),
 )
 @pytest.mark.parametrize(
     "comparison_type",
@@ -127,7 +127,7 @@ def test_frechet_distance_video_input_validation(shape1, shape2, expected_error)
 def test_frechet_distance_with_comparison_types(dataset, comparison_type):
     """Test frechet_distance function with different comparison types."""
     # Create tensors with appropriate channels for the dataset
-    channels = 3 if dataset == "bair" or dataset == "human" else 1
+    channels = 3 if dataset in ["bair", "human"] else 1
 
     if comparison_type == "frame":
         # For frame comparison, we need 4D tensors
@@ -210,12 +210,8 @@ def test_frechet_distance_calculator():
 )
 def test_frechet_distance_calculator_with_different_datasets(dataset):
     """Test FrechetDistanceCalculator with different datasets."""
-    # Skip tests for datasets other than mmnist_stochastic to speed up tests
-    # if dataset != "mmnist_stochastic":
-    #     pytest.skip(f"Skipping test for dataset {dataset} to speed up tests")
-
     # Create tensors with appropriate channels for the dataset
-    channels = 3 if dataset == "bair" else 1
+    channels = 3 if dataset in ["bair", "human"] else 1
     images = torch.rand(129, channels, 64, 64)
     videos = torch.rand(129, 16, channels, 64, 64)
 
