@@ -89,7 +89,9 @@ where $`m`$ are the feature means and $`C`$ the covariances.
 
 ## Citation
 
-If you use **SRVP‑FD**, please cite *Stochastic Latent Residual Video Prediction*:
+If you use **SRVP‑FD** in your research or publications, please cite the original SRVP paper, which provides the foundation for this tool's encoder and latent representations:
+
+*This package builds on the encoder from the original SRVP model to define a set of Fréchet-based distances for evaluating image and video generation models.*
 
 ```bibtex
 @inproceedings{franceschi2020stochastic,
