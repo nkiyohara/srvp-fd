@@ -127,7 +127,7 @@ def test_frechet_distance_video_input_validation(shape1, shape2, expected_error)
 def test_frechet_distance_with_comparison_types(dataset, comparison_type):
     """Test frechet_distance function with different comparison types."""
     # Create tensors with appropriate channels for the dataset
-    channels = 3 if dataset == "bair" else 1
+    channels = 3 if dataset == "bair" or dataset == "human" else 1
 
     if comparison_type == "frame":
         # For frame comparison, we need 4D tensors
