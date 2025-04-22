@@ -55,18 +55,15 @@ fd3 = calc(videos1, videos2, comparison_type="dynamics")
 
 ### Comparison Types
 
-| `comparison_type` | Feature source | What it captures | Reference |
-|-------------------|---------------|------------------|-----------|
-| `"frame"` | Encoder output of a *single* frame | Spatial appearance isolated to that frame | See Section 3 of the SRVP paper |
-| `"static_content"` | Sequence‑level content vector aggregated over the first `nt_inf` frames | Scene / object identity that stays constant throughout the clip | SRVP code: `infer_w` |
-| `"dynamics"` | Parameters (mean + std) of the initial hidden‑state distribution driving dynamics | Motion patterns (how content changes over time) | SRVP code: `infer_y` |
+| `comparison_type` | Latent signal (SRVP notation) | Captures | Paper section |
+|-------------------|--------------------------------|----------|---------------|
+| `"frame"` | Per‑frame embedding \( \tilde{\mathbf x}_t = h_\phi(x_t) \) | Appearance of a **single** frame (no temporal context) | §3, Eq.&nbsp;6 |
+| `"static_content"` | Global content vector \( \mathbf w = c_\psi(x_{i_1}, …, x_{i_k}) \) pooled from the first *k* conditioning frames | Scene or object identity that remains constant throughout the clip | §3.2 |
+| `"dynamics"` | Parameters \((\mu_\theta,\sigma_\theta)\) of the initial latent‑state distribution that seeds the residual dynamics \(f_\theta\) | Motion patterns and stochastic variation over time | §3.1, Eq.&nbsp;1 |
 
-*For mathematical definitions, please consult the [original SRVP paper](https://arxiv.org/abs/2002.08935)  
-and the [official implementation](https://github.com/edouardelasalles/srvp).* 
+*For precise mathematical definitions consult Eqs.&nbsp;(1)–(6) and Table&nbsp;1 of the&nbsp;[SRVP paper](https://arxiv.org/abs/2002.09219) (Franceschi&nbsp;*et al.*, 2020) and the&nbsp;[official implementation](https://github.com/edouardelasalles/srvp).*
 
-> **Note on dynamics comparison**: Since the dynamics output is a Gaussian distribution, batch statistics (mean and covariance) are calculated by approximating the equal-weighted Gaussian mixture as a single Gaussian distribution with mathematically derived mean and covariance.
-
----
+> **Gaussian‑mixture approximation**: For the `"dynamics"` comparison we collapse the batch of per‑sample Gaussians into a single Gaussian using the closed‑form mean and covariance of an equal‑weighted mixture.
 
 ## Features
 
