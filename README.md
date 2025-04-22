@@ -57,9 +57,9 @@ fd3 = calc(videos1, videos2, comparison_type="dynamics")
 
 | `comparison_type` | Latent signal (SRVP notation) | Captures | Paper section |
 |-------------------|--------------------------------|----------|---------------|
-| `"frame"` | Per‑frame embedding $\tilde{\mathbf x}_t = h_\phi(x_t)$ | Appearance of a **single** frame (no temporal context) | §3, Eq.&nbsp;6 |
-| `"static_content"` | Global content vector $\mathbf w = c_\psi(x_{i_1}, …, x_{i_k})$ pooled from the first *k* conditioning frames | Scene or object identity that remains constant throughout the clip | §3.2 |
-| `"dynamics"` | Parameters $((\mu_\theta,\sigma_\theta))$ of the initial latent‑state distribution that seeds the residual dynamics $f_\theta$ | Motion patterns and stochastic variation over time | §3.1, Eq.&nbsp;1 |
+| `"frame"` | Per‑frame embedding $`\tilde{\mathbf x}_t = h_\phi(x_t)`$ | Appearance of a **single** frame (no temporal context) | §3, Eq.&nbsp;6 |
+| `"static_content"` | Global content vector $`\mathbf{w} = c_\psi(\mathbf{x}_{i_1}, …, \mathbf{x}_{i_k})`$ pooled from the first *k* conditioning frames | Scene or object identity that remains constant throughout the clip | §3.2 |
+| `"dynamics"` | Parameters $`(\boldsymbol{\mu}_\theta,\boldsymbol{\sigma}_\theta)`$ of the initial latent‑state distribution that seeds the residual dynamics `$`f_\theta`$ | Motion patterns and stochastic variation over time | §3.1, Eq.&nbsp;1 |
 
 *For precise mathematical definitions consult Eqs.&nbsp;(1)–(6) and Table&nbsp;1 of the&nbsp;[SRVP paper](https://arxiv.org/abs/2002.09219) (Franceschi&nbsp;*et al.*, 2020) and the&nbsp;[official implementation](https://github.com/edouardelasalles/srvp).*
 
@@ -78,12 +78,12 @@ fd3 = calc(videos1, videos2, comparison_type="dynamics")
 
 ## Fréchet distance formula
 
-$$
+$$`
 d^2\bigl((m_1,\,C_1),(m_2,\,C_2)\bigr)
-= \lVert m_1 - m_2\rVert^2 + \operatorname{Tr}\!\bigl(C_1 + C_2 - 2\sqrt{C_1C_2}\bigr)
-$$
+= \lVert m_1 - m_2\rVert^2 + \mathrm{Tr}\bigl(C_1 + C_2 - 2\sqrt{C_1C_2}\bigr)
+`$$
 
-where $m$ are the feature means and $C$ the covariances.
+where $`m`$ are the feature means and $`C`$ the covariances.
 
 ---
 
