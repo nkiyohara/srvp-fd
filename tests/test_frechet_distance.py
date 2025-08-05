@@ -47,7 +47,7 @@ def test_calculate_frechet_distance():
     sigma2 = torch.tensor([[1e-10, 0.0, 0.0], [0.0, 1e-10, 0.0], [0.0, 0.0, 1e-10]])
 
     # Should not raise an error due to the offset added
-    fd = _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
+    fd = _calculate_frechet_distance(mu1, sigma1, mu2, sigma2, negative_eigenvalue_handling="clamp")
     assert fd >= 0.0
 
 
@@ -68,7 +68,7 @@ def test_frechet_distance_frame_input_validation(shape1, shape2, expected_error)
     images2 = torch.rand(*shape2)
 
     # Create a calculator with a default dataset
-    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
+    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic", negative_eigenvalue_handling="clamp")
 
     if expected_error:
         with pytest.raises(expected_error):
@@ -95,7 +95,7 @@ def test_frechet_distance_video_input_validation(shape1, shape2, expected_error)
     videos2 = torch.rand(*shape2)
 
     # Create a calculator with a default dataset
-    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
+    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic", negative_eigenvalue_handling="clamp")
 
     # Test for static_content comparison
     if expected_error:
@@ -139,7 +139,7 @@ def test_frechet_distance_with_comparison_types(dataset, comparison_type):
         input2 = torch.rand(129, 16, channels, 64, 64)
 
     # Calculate Fréchet distance using the specified comparison type
-    fd = frechet_distance(input1, input2, dataset=dataset, comparison_type=comparison_type)
+    fd = frechet_distance(input1, input2, dataset=dataset, comparison_type=comparison_type, negative_eigenvalue_handling="clamp")
 
     # Check that the result is a float
     assert isinstance(fd, float)
@@ -152,7 +152,7 @@ def test_invalid_comparison_type():
     images = torch.rand(129, 1, 64, 64)
 
     # Create a calculator
-    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
+    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic", negative_eigenvalue_handling="clamp")
 
     # Test with an invalid comparison type
     with pytest.raises(ValueError, match="Unrecognized comparison_type"):
@@ -166,7 +166,7 @@ def test_frechet_distance_calculator():
     videos = torch.rand(129, 16, 1, 64, 64)
 
     # Create a calculator
-    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
+    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic", negative_eigenvalue_handling="clamp")
 
     # Test frame comparison
     fd_frame = calculator(images, images, comparison_type="frame")
@@ -216,7 +216,7 @@ def test_frechet_distance_calculator_with_different_datasets(dataset):
     videos = torch.rand(129, 16, channels, 64, 64)
 
     # Create a calculator
-    calculator = FrechetDistanceCalculator(dataset=dataset)
+    calculator = FrechetDistanceCalculator(dataset=dataset, negative_eigenvalue_handling="clamp")
 
     # Test frame comparison
     fd_frame = calculator(images, images, comparison_type="frame")
@@ -245,19 +245,20 @@ def test_skip_connection_warning():
 
     # Test for frame comparison
     with pytest.warns(UserWarning, match="skip connections"):
-        fd = frechet_distance(images_rgb, images_rgb, dataset="bair", comparison_type="frame")
+        fd = frechet_distance(images_rgb, images_rgb, dataset="bair", comparison_type="frame", negative_eigenvalue_handling="clamp")
         assert isinstance(fd, float)
 
     # Test for static_content comparison
     with pytest.warns(UserWarning, match="skip connections"):
         fd = frechet_distance(
-            videos_rgb, videos_rgb, dataset="bair", comparison_type="static_content"
+            videos_rgb, videos_rgb, dataset="bair", comparison_type="static_content",
+            negative_eigenvalue_handling="clamp"
         )
         assert isinstance(fd, float)
 
     # Test for dynamics comparison
     with pytest.warns(UserWarning, match="skip connections"):
-        fd = frechet_distance(videos_rgb, videos_rgb, dataset="bair", comparison_type="dynamics")
+        fd = frechet_distance(videos_rgb, videos_rgb, dataset="bair", comparison_type="dynamics", negative_eigenvalue_handling="clamp")
         assert isinstance(fd, float)
 
     # No warning should be issued for datasets without skip connections
@@ -266,19 +267,22 @@ def test_skip_connection_warning():
 
         # Test frame comparison
         fd = frechet_distance(
-            images_gray, images_gray, dataset="mmnist_stochastic", comparison_type="frame"
+            images_gray, images_gray, dataset="mmnist_stochastic", comparison_type="frame",
+            negative_eigenvalue_handling="clamp"
         )
         assert isinstance(fd, float)
 
         # Test static_content comparison
         fd = frechet_distance(
-            videos_gray, videos_gray, dataset="mmnist_stochastic", comparison_type="static_content"
+            videos_gray, videos_gray, dataset="mmnist_stochastic", comparison_type="static_content",
+            negative_eigenvalue_handling="clamp"
         )
         assert isinstance(fd, float)
 
         # Test dynamics comparison
         fd = frechet_distance(
-            videos_gray, videos_gray, dataset="mmnist_stochastic", comparison_type="dynamics"
+            videos_gray, videos_gray, dataset="mmnist_stochastic", comparison_type="dynamics",
+            negative_eigenvalue_handling="clamp"
         )
         assert isinstance(fd, float)
 

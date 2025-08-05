@@ -21,16 +21,16 @@ similar_images2 = similar_images1 + 0.01 * torch.randn(batch_size, channels, hei
 
 print("Testing function API:")
 # Calculate Fréchet distance between random images
-fd_random = frechet_distance(random_images1, random_images2)
+fd_random = frechet_distance(random_images1, random_images2, negative_eigenvalue_handling="clamp")
 print(f"Fréchet distance between random images: {fd_random}")
 
 # Calculate Fréchet distance between similar images
-fd_similar = frechet_distance(similar_images1, similar_images2)
+fd_similar = frechet_distance(similar_images1, similar_images2, negative_eigenvalue_handling="clamp")
 print(f"Fréchet distance between similar images: {fd_similar}")
 
 print("\nTesting class API:")
 # Create a calculator
-calculator = FrechetDistanceCalculator()
+calculator = FrechetDistanceCalculator(negative_eigenvalue_handling="clamp")
 
 # Calculate Fréchet distance between random images
 fd_random_class = calculator(random_images1, random_images2)

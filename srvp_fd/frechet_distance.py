@@ -19,6 +19,9 @@ from .srvp_model import StochasticLatentResidualVideoPredictor
 # Define dataset options as Literal type
 DatasetType = Literal["mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"]
 
+# Define negative eigenvalue handling options
+NegativeEigenvalueHandling = Literal["nan", "clamp", "raise", "warn"]
+
 # Map dataset names to their paths in the repository
 DATASET_PATHS = {
     "mmnist_stochastic": "mmnist/stochastic",
@@ -51,7 +54,11 @@ def _matrix_sqrt(matrix: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
 
 
 def _calculate_frechet_distance(
-    mu1: torch.Tensor, sigma1: torch.Tensor, mu2: torch.Tensor, sigma2: torch.Tensor
+    mu1: torch.Tensor,
+    sigma1: torch.Tensor,
+    mu2: torch.Tensor,
+    sigma2: torch.Tensor,
+    negative_eigenvalue_handling: NegativeEigenvalueHandling = "nan",
 ) -> float:
     """Calculate Fréchet Distance between two multivariate Gaussians.
 
@@ -60,6 +67,11 @@ def _calculate_frechet_distance(
         sigma1: Covariance matrix of the first Gaussian distribution
         mu2: Mean of the second Gaussian distribution
         sigma2: Covariance matrix of the second Gaussian distribution
+        negative_eigenvalue_handling: How to handle negative eigenvalues:
+            - "nan": Return NaN (default)
+            - "clamp": Clamp result to 0.0 (original behavior)
+            - "raise": Raise ValueError
+            - "warn": Issue warning and return NaN
 
     Returns:
         Fréchet distance between the two distributions
@@ -67,8 +79,33 @@ def _calculate_frechet_distance(
     # Calculate squared difference between means
     diff = mu1 - mu2
 
+    # Check for negative eigenvalues in the product
+    product = sigma1 @ sigma2
+    eigenvalues, _ = torch.linalg.eigh(product)
+    
+    if (eigenvalues < -1e-10).any():
+        # Handle negative eigenvalues based on the specified method
+        if negative_eigenvalue_handling == "raise":
+            raise ValueError(
+                "Negative eigenvalues detected in covariance product. "
+                "Fréchet distance is mathematically undefined. "
+                "Consider using alternative distance metrics."
+            )
+        elif negative_eigenvalue_handling == "warn":
+            warnings.warn(
+                "Negative eigenvalues detected in covariance product. "
+                "Fréchet distance is mathematically undefined. "
+                "Returning NaN. Consider using alternative distance metrics.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return float('nan')
+        elif negative_eigenvalue_handling == "nan":
+            return float('nan')
+        # If "clamp", continue with the original behavior
+
     # Product of covariances
-    covmean = _matrix_sqrt(sigma1 @ sigma2)
+    covmean = _matrix_sqrt(product)
 
     # If covmean has any non-finite values, retry with a diagonal offset
     if not torch.isfinite(covmean).all():
@@ -79,7 +116,27 @@ def _calculate_frechet_distance(
     tr_covmean = torch.trace(covmean)
     fd = float((diff @ diff) + torch.trace(sigma1) + torch.trace(sigma2) - 2 * tr_covmean)
 
-    return max(fd, 0.0)  # Ensure non-negative result due to numerical precision
+    if negative_eigenvalue_handling == "clamp":
+        return max(fd, 0.0)  # Ensure non-negative result due to numerical precision
+    else:
+        # For other modes, return the actual value (which might be negative)
+        if fd < 0:
+            if negative_eigenvalue_handling == "raise":
+                raise ValueError(
+                    f"Computed Fréchet distance is negative ({fd}), "
+                    "indicating numerical issues."
+                )
+            elif negative_eigenvalue_handling == "warn":
+                warnings.warn(
+                    f"Computed Fréchet distance is negative ({fd}), "
+                    "indicating numerical issues. Returning NaN.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                return float('nan')
+            else:  # "nan"
+                return float('nan')
+        return fd
 
 
 def _get_model(dataset: DatasetType) -> Tuple[StochasticLatentResidualVideoPredictor, dict]:
@@ -262,12 +319,14 @@ class FrechetDistanceCalculator:
     Attributes:
         model: The SRVP model used for feature extraction.
         device: The device used for computation.
+        negative_eigenvalue_handling: How to handle negative eigenvalues.
     """
 
     def __init__(
         self,
         dataset: DatasetType = "mmnist_stochastic",
         device: Union[str, torch.device] = None,
+        negative_eigenvalue_handling: NegativeEigenvalueHandling = "nan",
     ):
         """Initialize the Fréchet distance calculator.
 
@@ -276,12 +335,20 @@ class FrechetDistanceCalculator:
                 Options: "mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"
             device: Device to use for computation. If None, will use CUDA if available,
                 otherwise CPU.
+            negative_eigenvalue_handling: How to handle negative eigenvalues:
+                - "nan": Return NaN (default)
+                - "clamp": Clamp result to 0.0 (original behavior)
+                - "raise": Raise ValueError
+                - "warn": Issue warning and return NaN
         """
         # Get the device
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
             self.device = device
+
+        # Store negative eigenvalue handling preference
+        self.negative_eigenvalue_handling = negative_eigenvalue_handling
 
         # Get the model
         self.model = _get_model(dataset)
@@ -407,7 +474,9 @@ class FrechetDistanceCalculator:
         sigma2 = (centered2.T @ centered2) / (features2.size(0) - 1)
 
         # Calculate Fréchet distance
-        return _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
+        return _calculate_frechet_distance(
+            mu1, sigma1, mu2, sigma2, self.negative_eigenvalue_handling
+        )
 
     def _calculate_frechet_distance_from_gaussian_params(
         self, params1: torch.Tensor, params2: torch.Tensor
@@ -472,7 +541,9 @@ class FrechetDistanceCalculator:
         sigma2 = e_cov2 + cov_e2
 
         # Calculate Fréchet distance between the two Gaussian mixtures
-        return _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
+        return _calculate_frechet_distance(
+            mu1, sigma1, mu2, sigma2, self.negative_eigenvalue_handling
+        )
 
     def extract_features(self, images: torch.Tensor) -> torch.Tensor:
         """Extract features from a set of images.
@@ -528,6 +599,7 @@ def frechet_distance(
     dataset: DatasetType = "mmnist_stochastic",
     comparison_type: Literal["frame", "static_content", "dynamics"] = "frame",
     device: Union[str, torch.device] = None,
+    negative_eigenvalue_handling: NegativeEigenvalueHandling = "nan",
 ) -> float:
     """Calculate the Fréchet distance between two sets of images or videos.
 
@@ -545,6 +617,11 @@ def frechet_distance(
                 captures scene/object appearance
             - "dynamics": Compare dynamics information (q_y_0) that captures motion patterns
         device: Device to use for computation. If None, will use CUDA if available, otherwise CPU.
+        negative_eigenvalue_handling: How to handle negative eigenvalues:
+            - "nan": Return NaN (default)
+            - "clamp": Clamp result to 0.0 (original behavior)
+            - "raise": Raise ValueError
+            - "warn": Issue warning and return NaN
 
     Returns:
         The Fréchet distance between the two sets.
@@ -552,5 +629,7 @@ def frechet_distance(
     Raises:
         ValueError: If the input shapes are invalid or comparison_type is unrecognized.
     """
-    calculator = FrechetDistanceCalculator(dataset=dataset, device=device)
+    calculator = FrechetDistanceCalculator(
+        dataset=dataset, device=device, negative_eigenvalue_handling=negative_eigenvalue_handling
+    )
     return calculator(images1, images2, comparison_type=comparison_type)
