@@ -5,7 +5,7 @@
 [![Python Versions](https://img.shields.io/pypi/pyversions/srvp-fd.svg)](https://pypi.org/project/srvp-fd/)
 [![License](https://img.shields.io/github/license/nkiyohara/srvp-fd.svg)](https://github.com/nkiyohara/srvp-fd/blob/main/LICENSE)
 
-`SRVP‑FD` computes **Fréchet distance** between images or videos using the encoder of the  
+`SRVP‑FD` computes **Fréchet distance** between images or videos using the encoder of the
 **Stochastic Latent Residual Video Prediction (SRVP)** model.
 
 ---
@@ -67,12 +67,12 @@ fd3 = calc(videos1, videos2, comparison_type="dynamics")
 
 ## Features
 
-* Multiple comparison modes (frame / static content / dynamics)  
-* Pre‑trained weights downloaded automatically from **HuggingFace Hub**  
-* Supported datasets: Moving MNIST, BAIR, KTH, Human3.6M  
-* Single‑load, class‑based API for high‑throughput evaluation  
-* CPU **and** GPU compatible  
-* Covariance maths guarded for numerical stability  
+* Multiple comparison modes (frame / static content / dynamics)
+* Pre‑trained weights downloaded automatically from **HuggingFace Hub**
+* Supported datasets: Moving MNIST, BAIR, KTH, Human3.6M
+* Single‑load, class‑based API for high‑throughput evaluation
+* CPU **and** GPU compatible
+* Covariance maths guarded for numerical stability
 
 ---
 
@@ -115,8 +115,8 @@ Apache License 2.0 – same as the original SRVP implementation.
 
 ## Acknowledgements
 
-Built on the excellent work of the SRVP authors:  
-Jean‑Yves Franceschi · Edouard Delasalles · Mickaël Chen · Sylvain Lamprier · Patrick Gallinari  
+Built on the excellent work of the SRVP authors:
+Jean‑Yves Franceschi · Edouard Delasalles · Mickaël Chen · Sylvain Lamprier · Patrick Gallinari
 
-* <https://github.com/edouardelasalles/srvp>  
+* <https://github.com/edouardelasalles/srvp>
 * <https://sites.google.com/view/srvp/>

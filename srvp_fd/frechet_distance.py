@@ -82,7 +82,7 @@ def _calculate_frechet_distance(
     # Check for negative eigenvalues in the product
     product = sigma1 @ sigma2
     eigenvalues, _ = torch.linalg.eigh(product)
-    
+
     if (eigenvalues < -1e-10).any():
         # Handle negative eigenvalues based on the specified method
         if negative_eigenvalue_handling == "raise":
@@ -91,7 +91,7 @@ def _calculate_frechet_distance(
                 "Fréchet distance is mathematically undefined. "
                 "Consider using alternative distance metrics."
             )
-        elif negative_eigenvalue_handling == "warn":
+        if negative_eigenvalue_handling == "warn":
             warnings.warn(
                 "Negative eigenvalues detected in covariance product. "
                 "Fréchet distance is mathematically undefined. "
@@ -99,9 +99,9 @@ def _calculate_frechet_distance(
                 RuntimeWarning,
                 stacklevel=2,
             )
-            return float('nan')
-        elif negative_eigenvalue_handling == "nan":
-            return float('nan')
+            return float("nan")
+        if negative_eigenvalue_handling == "nan":
+            return float("nan")
         # If "clamp", continue with the original behavior
 
     # Product of covariances
@@ -118,25 +118,23 @@ def _calculate_frechet_distance(
 
     if negative_eigenvalue_handling == "clamp":
         return max(fd, 0.0)  # Ensure non-negative result due to numerical precision
-    else:
-        # For other modes, return the actual value (which might be negative)
-        if fd < 0:
-            if negative_eigenvalue_handling == "raise":
-                raise ValueError(
-                    f"Computed Fréchet distance is negative ({fd}), "
-                    "indicating numerical issues."
-                )
-            elif negative_eigenvalue_handling == "warn":
-                warnings.warn(
-                    f"Computed Fréchet distance is negative ({fd}), "
-                    "indicating numerical issues. Returning NaN.",
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
-                return float('nan')
-            else:  # "nan"
-                return float('nan')
-        return fd
+    # For other modes, return the actual value (which might be negative)
+    if fd < 0:
+        if negative_eigenvalue_handling == "raise":
+            raise ValueError(
+                f"Computed Fréchet distance is negative ({fd}), indicating numerical issues."
+            )
+        if negative_eigenvalue_handling == "warn":
+            warnings.warn(
+                f"Computed Fréchet distance is negative ({fd}), "
+                "indicating numerical issues. Returning NaN.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return float("nan")
+        # "nan"
+        return float("nan")
+    return fd
 
 
 def _get_model(dataset: DatasetType) -> Tuple[StochasticLatentResidualVideoPredictor, dict]:
