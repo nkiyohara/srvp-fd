@@ -385,8 +385,8 @@ class FrechetDistanceCalculator:
 
             # Extract features
             with torch.no_grad():
-                features1 = self.model.encoder(images1.to(self.device))
-                features2 = self.model.encoder(images2.to(self.device))
+                features1 = self.model.encoder(images1.to(self.device)).double()
+                features2 = self.model.encoder(images2.to(self.device)).double()
 
             # Calculate Fréchet distance
             return self._calculate_frechet_distance_from_features(features1, features2)
@@ -397,12 +397,12 @@ class FrechetDistanceCalculator:
 
             # Extract w or q_y_0_params
             if comparison_type == "static_content":
-                features1 = self._extract_w(images1)
-                features2 = self._extract_w(images2)
+                features1 = self._extract_w(images1).double()
+                features2 = self._extract_w(images2).double()
                 return self._calculate_frechet_distance_from_features(features1, features2)
             # comparison_type == "dynamics"
-            q_y_0_params1 = self._extract_q_y_0_params(images1)
-            q_y_0_params2 = self._extract_q_y_0_params(images2)
+            q_y_0_params1 = self._extract_q_y_0_params(images1).double()
+            q_y_0_params2 = self._extract_q_y_0_params(images2).double()
             return self._calculate_frechet_distance_from_gaussian_params(
                 q_y_0_params1, q_y_0_params2
             )
@@ -564,7 +564,7 @@ class FrechetDistanceCalculator:
 
         # Extract features
         with torch.no_grad():
-            return self.model.encoder(images.to(self.device))
+            return self.model.encoder(images.to(self.device)).double()
 
     def extract_w(self, videos: torch.Tensor) -> torch.Tensor:
         """Extract static content information (w) from videos.
@@ -576,7 +576,7 @@ class FrechetDistanceCalculator:
             Tensor of w features with shape [batch_size, feature_dim]
         """
         _validate_video_input_shapes(videos, videos, self.model)  # Validate shape with itself
-        return self._extract_w(videos)
+        return self._extract_w(videos).double()
 
     def extract_q_y_0_params(self, videos: torch.Tensor) -> torch.Tensor:
         """Extract dynamics information (q_y_0_params) from videos.
@@ -588,7 +588,7 @@ class FrechetDistanceCalculator:
             Tensor of q_y_0_params with shape [batch_size, 2*ny]
         """
         _validate_video_input_shapes(videos, videos, self.model)  # Validate shape with itself
-        return self._extract_q_y_0_params(videos)
+        return self._extract_q_y_0_params(videos).double()
 
 
 def frechet_distance(
