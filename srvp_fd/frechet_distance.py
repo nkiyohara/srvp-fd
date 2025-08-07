@@ -9,9 +9,11 @@ import os
 import warnings
 from typing import Literal, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
 from huggingface_hub import hf_hub_download
+from scipy import linalg
 
 # Import the SRVP model components
 from .srvp_model import StochasticLatentResidualVideoPredictor
@@ -19,8 +21,6 @@ from .srvp_model import StochasticLatentResidualVideoPredictor
 # Define dataset options as Literal type
 DatasetType = Literal["mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"]
 
-# Define negative eigenvalue handling options
-NegativeEigenvalueHandling = Literal["nan", "clamp", "raise", "warn"]
 
 # Map dataset names to their paths in the repository
 DATASET_PATHS = {
@@ -32,25 +32,97 @@ DATASET_PATHS = {
 }
 
 
-def _matrix_sqrt(matrix: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
-    """Compute the square root of a positive‑definite matrix.
+def _matrix_sqrt(matrix: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    """Compute the matrix square root of a symmetric positive semi-definite matrix.
+
+    This function computes the square root using eigendecomposition with regularization
+    to handle numerical precision issues. The matrix square root satisfies:
+    sqrt(A) @ sqrt(A) = A
 
     Args:
-        matrix: A positive‑definite matrix.
-        eps: Small epsilon value for numerical stability.
+        matrix: A symmetric positive semi-definite matrix
+        eps: Regularization parameter to ensure positive definiteness
 
     Returns:
-        The matrix square root.
+        The matrix square root
     """
-    # Add a small value to the diagonal for numerical stability
-    matrix = matrix + torch.eye(matrix.size(0), device=matrix.device) * eps
+    # Ensure the matrix is exactly symmetric
+    matrix = (matrix + matrix.T) / 2
 
-    # Compute the eigendecomposition
+    # Add regularization to ensure positive definiteness
+    matrix = matrix + torch.eye(matrix.size(0), device=matrix.device, dtype=matrix.dtype) * eps
+
+    # Eigendecomposition
     eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
 
-    # Compute the square root using the eigendecomposition
-    sqrt_eigenvalues = torch.sqrt(torch.clamp(eigenvalues, min=eps))
+    # Ensure all eigenvalues are positive
+    eigenvalues = torch.clamp(eigenvalues, min=eps)
+
+    # Compute matrix square root
+    sqrt_eigenvalues = torch.sqrt(eigenvalues)
     return eigenvectors @ torch.diag(sqrt_eigenvalues) @ eigenvectors.T
+
+
+def _calculate_frechet_distance_numpy(
+    mu1: np.ndarray,
+    sigma1: np.ndarray,
+    mu2: np.ndarray,
+    sigma2: np.ndarray,
+) -> float:
+    """Calculate Fréchet Distance using SciPy's robust matrix square root.
+
+    This implementation uses scipy.linalg.sqrtm which provides a numerically
+    stable implementation of the matrix square root operation. SciPy's sqrtm
+    handles edge cases and numerical precision issues better than custom
+    implementations.
+
+    The Fréchet distance between two multivariate normal distributions is:
+    d²(N₁, N₂) = ||μ₁ - μ₂||² + Tr(Σ₁ + Σ₂ - 2√(√Σ₁ Σ₂ √Σ₁))
+
+    Args:
+        mu1: Mean vector of the first Gaussian distribution
+        sigma1: Covariance matrix of the first Gaussian distribution
+        mu2: Mean vector of the second Gaussian distribution
+        sigma2: Covariance matrix of the second Gaussian distribution
+
+    Returns:
+        Fréchet distance between the two distributions
+    """
+    # Ensure float64 precision
+    mu1 = mu1.astype(np.float64)
+    mu2 = mu2.astype(np.float64)
+    sigma1 = sigma1.astype(np.float64)
+    sigma2 = sigma2.astype(np.float64)
+
+    # Calculate squared norm of mean difference
+    diff = mu1 - mu2
+    mean_diff_squared = np.sum(diff * diff)
+
+    # Compute sqrt(sigma1) using SciPy's robust implementation
+    sqrt_sigma1 = linalg.sqrtm(sigma1)
+
+    # Handle potential complex results from sqrtm (due to numerical errors)
+    if np.iscomplexobj(sqrt_sigma1):
+        sqrt_sigma1 = sqrt_sigma1.real
+
+    # Compute sqrt(sigma1) @ sigma2 @ sqrt(sigma1)
+    product = sqrt_sigma1 @ sigma2 @ sqrt_sigma1
+
+    # Compute sqrt(product) using SciPy
+    sqrt_product = linalg.sqrtm(product)
+
+    # Handle potential complex results
+    if np.iscomplexobj(sqrt_product):
+        sqrt_product = sqrt_product.real
+
+    # Calculate Fréchet distance
+    # d² = ||μ₁ - μ₂||² + Tr(Σ₁) + Tr(Σ₂) - 2*Tr(√(√Σ₁ Σ₂ √Σ₁))
+    frechet_distance_squared = (
+        mean_diff_squared + np.trace(sigma1) + np.trace(sigma2) - 2 * np.trace(sqrt_product)
+    )
+
+    # Return the distance (handle numerical precision issues)
+    return max(float(frechet_distance_squared), 0.0)
 
 
 def _calculate_frechet_distance(
@@ -58,83 +130,29 @@ def _calculate_frechet_distance(
     sigma1: torch.Tensor,
     mu2: torch.Tensor,
     sigma2: torch.Tensor,
-    negative_eigenvalue_handling: NegativeEigenvalueHandling = "nan",
 ) -> float:
     """Calculate Fréchet Distance between two multivariate Gaussians.
 
+    This function converts PyTorch tensors to NumPy arrays and uses
+    SciPy's robust linear algebra functions for the computation.
+
     Args:
-        mu1: Mean of the first Gaussian distribution
-        sigma1: Covariance matrix of the first Gaussian distribution
-        mu2: Mean of the second Gaussian distribution
-        sigma2: Covariance matrix of the second Gaussian distribution
-        negative_eigenvalue_handling: How to handle negative eigenvalues:
-            - "nan": Return NaN (default)
-            - "clamp": Clamp result to 0.0 (original behavior)
-            - "raise": Raise ValueError
-            - "warn": Issue warning and return NaN
+        mu1: Mean vector of the first Gaussian distribution (PyTorch tensor)
+        sigma1: Covariance matrix of the first Gaussian distribution (PyTorch tensor)
+        mu2: Mean vector of the second Gaussian distribution (PyTorch tensor)
+        sigma2: Covariance matrix of the second Gaussian distribution (PyTorch tensor)
 
     Returns:
         Fréchet distance between the two distributions
     """
-    # Calculate squared difference between means
-    diff = mu1 - mu2
+    # Convert PyTorch tensors to NumPy arrays
+    mu1_np = mu1.detach().cpu().numpy()
+    mu2_np = mu2.detach().cpu().numpy()
+    sigma1_np = sigma1.detach().cpu().numpy()
+    sigma2_np = sigma2.detach().cpu().numpy()
 
-    # Check for negative eigenvalues in the product
-    product = sigma1 @ sigma2
-    eigenvalues, _ = torch.linalg.eigh(product)
-
-    if (eigenvalues < -1e-10).any():
-        # Handle negative eigenvalues based on the specified method
-        if negative_eigenvalue_handling == "raise":
-            raise ValueError(
-                "Negative eigenvalues detected in covariance product. "
-                "Fréchet distance is mathematically undefined. "
-                "Consider using alternative distance metrics."
-            )
-        if negative_eigenvalue_handling == "warn":
-            warnings.warn(
-                "Negative eigenvalues detected in covariance product. "
-                "Fréchet distance is mathematically undefined. "
-                "Returning NaN. Consider using alternative distance metrics.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            return float("nan")
-        if negative_eigenvalue_handling == "nan":
-            return float("nan")
-        # If "clamp", continue with the original behavior
-
-    # Product of covariances
-    covmean = _matrix_sqrt(product)
-
-    # If covmean has any non-finite values, retry with a diagonal offset
-    if not torch.isfinite(covmean).all():
-        offset = torch.eye(sigma1.size(0), device=sigma1.device) * 1e-6
-        covmean = _matrix_sqrt((sigma1 + offset) @ (sigma2 + offset))
-
-    # Calculate Fréchet distance
-    tr_covmean = torch.trace(covmean)
-    fd = float((diff @ diff) + torch.trace(sigma1) + torch.trace(sigma2) - 2 * tr_covmean)
-
-    if negative_eigenvalue_handling == "clamp":
-        return max(fd, 0.0)  # Ensure non-negative result due to numerical precision
-    # For other modes, return the actual value (which might be negative)
-    if fd < 0:
-        if negative_eigenvalue_handling == "raise":
-            raise ValueError(
-                f"Computed Fréchet distance is negative ({fd}), indicating numerical issues."
-            )
-        if negative_eigenvalue_handling == "warn":
-            warnings.warn(
-                f"Computed Fréchet distance is negative ({fd}), "
-                "indicating numerical issues. Returning NaN.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            return float("nan")
-        # "nan"
-        return float("nan")
-    return fd
+    # Use NumPy/SciPy implementation
+    return _calculate_frechet_distance_numpy(mu1_np, sigma1_np, mu2_np, sigma2_np)
 
 
 def _get_model(dataset: DatasetType) -> Tuple[StochasticLatentResidualVideoPredictor, dict]:
@@ -317,36 +335,26 @@ class FrechetDistanceCalculator:
     Attributes:
         model: The SRVP model used for feature extraction.
         device: The device used for computation.
-        negative_eigenvalue_handling: How to handle negative eigenvalues.
     """
 
     def __init__(
         self,
         dataset: DatasetType = "mmnist_stochastic",
         device: Union[str, torch.device] = None,
-        negative_eigenvalue_handling: NegativeEigenvalueHandling = "nan",
     ):
         """Initialize the Fréchet distance calculator.
 
         Args:
-            dataset: The dataset to use for feature extraction. Required if model_path is None.
+            dataset: The dataset to use for feature extraction.
                 Options: "mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"
             device: Device to use for computation. If None, will use CUDA if available,
                 otherwise CPU.
-            negative_eigenvalue_handling: How to handle negative eigenvalues:
-                - "nan": Return NaN (default)
-                - "clamp": Clamp result to 0.0 (original behavior)
-                - "raise": Raise ValueError
-                - "warn": Issue warning and return NaN
         """
         # Get the device
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
             self.device = device
-
-        # Store negative eigenvalue handling preference
-        self.negative_eigenvalue_handling = negative_eigenvalue_handling
 
         # Get the model
         self.model = _get_model(dataset)
@@ -461,20 +469,20 @@ class FrechetDistanceCalculator:
         Returns:
             The Fréchet distance between the two sets of features.
         """
-        # Calculate mean and covariance
-        mu1 = torch.mean(features1, dim=0)
-        # Covariance calculation
-        centered1 = features1 - mu1.unsqueeze(0)
-        sigma1 = (centered1.T @ centered1) / (features1.size(0) - 1)
+        # Convert to NumPy for statistical calculations
+        features1_np = features1.detach().cpu().numpy().astype(np.float64)
+        features2_np = features2.detach().cpu().numpy().astype(np.float64)
 
-        mu2 = torch.mean(features2, dim=0)
-        centered2 = features2 - mu2.unsqueeze(0)
-        sigma2 = (centered2.T @ centered2) / (features2.size(0) - 1)
+        # Calculate mean and covariance using NumPy
+        mu1 = np.mean(features1_np, axis=0)
+        mu2 = np.mean(features2_np, axis=0)
 
-        # Calculate Fréchet distance
-        return _calculate_frechet_distance(
-            mu1, sigma1, mu2, sigma2, self.negative_eigenvalue_handling
-        )
+        # Calculate covariance matrices
+        sigma1 = np.cov(features1_np, rowvar=False, ddof=1)
+        sigma2 = np.cov(features2_np, rowvar=False, ddof=1)
+
+        # Calculate Fréchet distance using SciPy
+        return _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
 
     def _calculate_frechet_distance_from_gaussian_params(
         self, params1: torch.Tensor, params2: torch.Tensor
@@ -511,9 +519,15 @@ class FrechetDistanceCalculator:
         var1_samples = scale1_samples**2
         var2_samples = scale2_samples**2
 
+        # Convert to NumPy for statistical calculations
+        mu1_samples_np = mu1_samples.detach().cpu().numpy().astype(np.float64)
+        mu2_samples_np = mu2_samples.detach().cpu().numpy().astype(np.float64)
+        var1_samples_np = var1_samples.detach().cpu().numpy().astype(np.float64)
+        var2_samples_np = var2_samples.detach().cpu().numpy().astype(np.float64)
+
         # Moment matching for the first mixture
         # Mean of the mixture is the average of the component means
-        mu1 = torch.mean(mu1_samples, dim=0)  # Shape: [ny]
+        mu1 = np.mean(mu1_samples_np, axis=0)  # Shape: [ny]
 
         # Covariance of the mixture combines component covariances and means
         # Cov = E[Cov] + Cov[E]
@@ -521,27 +535,25 @@ class FrechetDistanceCalculator:
         # Cov[E] is covariance of component means
 
         # Average of component variances (diagonal covariance matrices)
-        avg_var1 = torch.mean(var1_samples, dim=0)
-        e_cov1 = torch.diag(avg_var1)
+        avg_var1 = np.mean(var1_samples_np, axis=0)
+        e_cov1 = np.diag(avg_var1)
 
         # Covariance of component means
-        centered_mu1 = mu1_samples - mu1.unsqueeze(0)
-        cov_e1 = (centered_mu1.T @ centered_mu1) / (mu1_samples.size(0) - 1)
+        centered_mu1 = mu1_samples_np - mu1[np.newaxis, :]
+        cov_e1 = (centered_mu1.T @ centered_mu1) / (mu1_samples_np.shape[0] - 1)
         sigma1 = e_cov1 + cov_e1
 
         # Repeat for the second mixture
-        mu2 = torch.mean(mu2_samples, dim=0)
-        avg_var2 = torch.mean(var2_samples, dim=0)
-        e_cov2 = torch.diag(avg_var2)
+        mu2 = np.mean(mu2_samples_np, axis=0)
+        avg_var2 = np.mean(var2_samples_np, axis=0)
+        e_cov2 = np.diag(avg_var2)
 
-        centered_mu2 = mu2_samples - mu2.unsqueeze(0)
-        cov_e2 = (centered_mu2.T @ centered_mu2) / (mu2_samples.size(0) - 1)
+        centered_mu2 = mu2_samples_np - mu2[np.newaxis, :]
+        cov_e2 = (centered_mu2.T @ centered_mu2) / (mu2_samples_np.shape[0] - 1)
         sigma2 = e_cov2 + cov_e2
 
-        # Calculate Fréchet distance between the two Gaussian mixtures
-        return _calculate_frechet_distance(
-            mu1, sigma1, mu2, sigma2, self.negative_eigenvalue_handling
-        )
+        # Calculate Fréchet distance between the two Gaussian mixtures using SciPy
+        return _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
 
     def extract_features(self, images: torch.Tensor) -> torch.Tensor:
         """Extract features from a set of images.
@@ -597,7 +609,6 @@ def frechet_distance(
     dataset: DatasetType = "mmnist_stochastic",
     comparison_type: Literal["frame", "static_content", "dynamics"] = "frame",
     device: Union[str, torch.device] = None,
-    negative_eigenvalue_handling: NegativeEigenvalueHandling = "nan",
 ) -> float:
     """Calculate the Fréchet distance between two sets of images or videos.
 
@@ -615,11 +626,6 @@ def frechet_distance(
                 captures scene/object appearance
             - "dynamics": Compare dynamics information (q_y_0) that captures motion patterns
         device: Device to use for computation. If None, will use CUDA if available, otherwise CPU.
-        negative_eigenvalue_handling: How to handle negative eigenvalues:
-            - "nan": Return NaN (default)
-            - "clamp": Clamp result to 0.0 (original behavior)
-            - "raise": Raise ValueError
-            - "warn": Issue warning and return NaN
 
     Returns:
         The Fréchet distance between the two sets.
@@ -627,7 +633,5 @@ def frechet_distance(
     Raises:
         ValueError: If the input shapes are invalid or comparison_type is unrecognized.
     """
-    calculator = FrechetDistanceCalculator(
-        dataset=dataset, device=device, negative_eigenvalue_handling=negative_eigenvalue_handling
-    )
+    calculator = FrechetDistanceCalculator(dataset=dataset, device=device)
     return calculator(images1, images2, comparison_type=comparison_type)

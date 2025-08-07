@@ -46,8 +46,8 @@ def test_calculate_frechet_distance():
     mu2 = torch.tensor([0.0, 0.0, 0.0])
     sigma2 = torch.tensor([[1e-10, 0.0, 0.0], [0.0, 1e-10, 0.0], [0.0, 0.0, 1e-10]])
 
-    # Should not raise an error due to the offset added
-    fd = _calculate_frechet_distance(mu1, sigma1, mu2, sigma2, negative_eigenvalue_handling="clamp")
+    # Should not raise an error due to SciPy's robust implementation
+    fd = _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
     assert fd >= 0.0
 
 
@@ -68,9 +68,7 @@ def test_frechet_distance_frame_input_validation(shape1, shape2, expected_error)
     images2 = torch.rand(*shape2)
 
     # Create a calculator with a default dataset
-    calculator = FrechetDistanceCalculator(
-        dataset="mmnist_stochastic", negative_eigenvalue_handling="clamp"
-    )
+    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
 
     if expected_error:
         with pytest.raises(expected_error):
@@ -97,9 +95,7 @@ def test_frechet_distance_video_input_validation(shape1, shape2, expected_error)
     videos2 = torch.rand(*shape2)
 
     # Create a calculator with a default dataset
-    calculator = FrechetDistanceCalculator(
-        dataset="mmnist_stochastic", negative_eigenvalue_handling="clamp"
-    )
+    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
 
     # Test for static_content comparison
     if expected_error:
@@ -148,7 +144,6 @@ def test_frechet_distance_with_comparison_types(dataset, comparison_type):
         input2,
         dataset=dataset,
         comparison_type=comparison_type,
-        negative_eigenvalue_handling="clamp",
     )
 
     # Check that the result is a float
@@ -162,9 +157,7 @@ def test_invalid_comparison_type():
     images = torch.rand(129, 1, 64, 64)
 
     # Create a calculator
-    calculator = FrechetDistanceCalculator(
-        dataset="mmnist_stochastic", negative_eigenvalue_handling="clamp"
-    )
+    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
 
     # Test with an invalid comparison type
     with pytest.raises(ValueError, match="Unrecognized comparison_type"):
@@ -178,9 +171,7 @@ def test_frechet_distance_calculator():
     videos = torch.rand(129, 16, 1, 64, 64)
 
     # Create a calculator
-    calculator = FrechetDistanceCalculator(
-        dataset="mmnist_stochastic", negative_eigenvalue_handling="clamp"
-    )
+    calculator = FrechetDistanceCalculator(dataset="mmnist_stochastic")
 
     # Test frame comparison
     fd_frame = calculator(images, images, comparison_type="frame")
@@ -230,7 +221,7 @@ def test_frechet_distance_calculator_with_different_datasets(dataset):
     videos = torch.rand(129, 16, channels, 64, 64)
 
     # Create a calculator
-    calculator = FrechetDistanceCalculator(dataset=dataset, negative_eigenvalue_handling="clamp")
+    calculator = FrechetDistanceCalculator(dataset=dataset)
 
     # Test frame comparison
     fd_frame = calculator(images, images, comparison_type="frame")
@@ -264,7 +255,6 @@ def test_skip_connection_warning():
             images_rgb,
             dataset="bair",
             comparison_type="frame",
-            negative_eigenvalue_handling="clamp",
         )
     assert isinstance(fd, float)
 
@@ -275,7 +265,6 @@ def test_skip_connection_warning():
             videos_rgb,
             dataset="bair",
             comparison_type="static_content",
-            negative_eigenvalue_handling="clamp",
         )
     assert isinstance(fd, float)
 
@@ -286,7 +275,6 @@ def test_skip_connection_warning():
             videos_rgb,
             dataset="bair",
             comparison_type="dynamics",
-            negative_eigenvalue_handling="clamp",
         )
     assert isinstance(fd, float)
 
@@ -300,7 +288,6 @@ def test_skip_connection_warning():
             images_gray,
             dataset="mmnist_stochastic",
             comparison_type="frame",
-            negative_eigenvalue_handling="clamp",
         )
         assert isinstance(fd, float)
 
@@ -310,7 +297,6 @@ def test_skip_connection_warning():
             videos_gray,
             dataset="mmnist_stochastic",
             comparison_type="static_content",
-            negative_eigenvalue_handling="clamp",
         )
         assert isinstance(fd, float)
 
@@ -320,32 +306,31 @@ def test_skip_connection_warning():
             videos_gray,
             dataset="mmnist_stochastic",
             comparison_type="dynamics",
-            negative_eigenvalue_handling="clamp",
         )
         assert isinstance(fd, float)
 
         assert len(record) == 0, "Warning was issued for a dataset without skip connections"
 
 
-def test_matrix_sqrt():
-    """Test the matrix square root function."""
-    from srvp_fd.frechet_distance import _matrix_sqrt
+def test_scipy_based_implementation():
+    """Test that the SciPy-based implementation provides numerically stable results."""
+    import numpy as np
 
-    # Test with identity matrix
-    identity = torch.eye(3)
-    sqrt_identity = _matrix_sqrt(identity)
-    # Square root of identity is identity
-    assert torch.allclose(sqrt_identity, identity, atol=1e-6)
+    from srvp_fd.frechet_distance import _calculate_frechet_distance_numpy
 
-    # Test with a more complex matrix
-    matrix = torch.tensor([[4.0, 1.0], [1.0, 9.0]])
-    sqrt_matrix = _matrix_sqrt(matrix)
-    # Verify A = sqrt_A @ sqrt_A
-    reconstructed_matrix = sqrt_matrix @ sqrt_matrix
-    assert torch.allclose(reconstructed_matrix, matrix, atol=1e-6)
+    # Test with identity matrices - should give zero distance for identical distributions
+    mu1 = np.array([0.0, 0.0])
+    sigma1 = np.eye(2)
+    mu2 = np.array([0.0, 0.0])
+    sigma2 = np.eye(2)
 
-    # Test with diagonal matrix
-    diag = torch.diag(torch.tensor([4.0, 9.0, 16.0]))
-    sqrt_diag = _matrix_sqrt(diag)
-    expected_sqrt_diag = torch.diag(torch.tensor([2.0, 3.0, 4.0]))
-    assert torch.allclose(sqrt_diag, expected_sqrt_diag, atol=1e-6)
+    # Fréchet distance between identical distributions should be 0
+    fd = _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
+    assert abs(fd) < 1e-10, f"Expected ~0, got {fd}"
+
+    # Test with different distributions - should give positive distance
+    mu2 = np.array([1.0, 1.0])
+    sigma2 = np.eye(2) * 2
+
+    fd = _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
+    assert fd > 0, f"Expected positive distance, got {fd}"
