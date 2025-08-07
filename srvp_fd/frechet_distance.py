@@ -32,37 +32,6 @@ DATASET_PATHS = {
 }
 
 
-def _matrix_sqrt(matrix: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    """Compute the matrix square root of a symmetric positive semi-definite matrix.
-
-    This function computes the square root using eigendecomposition with regularization
-    to handle numerical precision issues. The matrix square root satisfies:
-    sqrt(A) @ sqrt(A) = A
-
-    Args:
-        matrix: A symmetric positive semi-definite matrix
-        eps: Regularization parameter to ensure positive definiteness
-
-    Returns:
-        The matrix square root
-    """
-    # Ensure the matrix is exactly symmetric
-    matrix = (matrix + matrix.T) / 2
-
-    # Add regularization to ensure positive definiteness
-    matrix = matrix + torch.eye(matrix.size(0), device=matrix.device, dtype=matrix.dtype) * eps
-
-    # Eigendecomposition
-    eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
-
-    # Ensure all eigenvalues are positive
-    eigenvalues = torch.clamp(eigenvalues, min=eps)
-
-    # Compute matrix square root
-    sqrt_eigenvalues = torch.sqrt(eigenvalues)
-    return eigenvectors @ torch.diag(sqrt_eigenvalues) @ eigenvectors.T
-
-
 def _calculate_frechet_distance_numpy(
     mu1: np.ndarray,
     sigma1: np.ndarray,
@@ -123,36 +92,6 @@ def _calculate_frechet_distance_numpy(
 
     # Return the distance (handle numerical precision issues)
     return max(float(frechet_distance_squared), 0.0)
-
-
-def _calculate_frechet_distance(
-    mu1: torch.Tensor,
-    sigma1: torch.Tensor,
-    mu2: torch.Tensor,
-    sigma2: torch.Tensor,
-) -> float:
-    """Calculate Fréchet Distance between two multivariate Gaussians.
-
-    This function converts PyTorch tensors to NumPy arrays and uses
-    SciPy's robust linear algebra functions for the computation.
-
-    Args:
-        mu1: Mean vector of the first Gaussian distribution (PyTorch tensor)
-        sigma1: Covariance matrix of the first Gaussian distribution (PyTorch tensor)
-        mu2: Mean vector of the second Gaussian distribution (PyTorch tensor)
-        sigma2: Covariance matrix of the second Gaussian distribution (PyTorch tensor)
-
-    Returns:
-        Fréchet distance between the two distributions
-    """
-    # Convert PyTorch tensors to NumPy arrays
-    mu1_np = mu1.detach().cpu().numpy()
-    mu2_np = mu2.detach().cpu().numpy()
-    sigma1_np = sigma1.detach().cpu().numpy()
-    sigma2_np = sigma2.detach().cpu().numpy()
-
-    # Use NumPy/SciPy implementation
-    return _calculate_frechet_distance_numpy(mu1_np, sigma1_np, mu2_np, sigma2_np)
 
 
 def _get_model(dataset: DatasetType) -> Tuple[StochasticLatentResidualVideoPredictor, dict]:
