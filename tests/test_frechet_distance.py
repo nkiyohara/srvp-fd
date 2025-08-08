@@ -246,19 +246,19 @@ def test_skip_connection_warning():
     # Test for frame comparison
     with pytest.warns(UserWarning, match="skip connections"):
         fd = frechet_distance(images_rgb, images_rgb, dataset="bair", comparison_type="frame")
-        assert isinstance(fd, float)
+    assert isinstance(fd, float)
 
     # Test for static_content comparison
     with pytest.warns(UserWarning, match="skip connections"):
         fd = frechet_distance(
             videos_rgb, videos_rgb, dataset="bair", comparison_type="static_content"
         )
-        assert isinstance(fd, float)
+    assert isinstance(fd, float)
 
     # Test for dynamics comparison
     with pytest.warns(UserWarning, match="skip connections"):
         fd = frechet_distance(videos_rgb, videos_rgb, dataset="bair", comparison_type="dynamics")
-        assert isinstance(fd, float)
+    assert isinstance(fd, float)
 
     # No warning should be issued for datasets without skip connections
     with warnings.catch_warnings(record=True) as record:
