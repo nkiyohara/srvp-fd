@@ -263,8 +263,10 @@ def test_skip_connection_warning():
     assert isinstance(fd, float)
 
     # No warning should be issued for datasets without skip connections
+    # Only capture UserWarnings about skip connections, ignore scipy warnings
     with warnings.catch_warnings(record=True) as record:
-        warnings.simplefilter("always")
+        warnings.simplefilter("ignore")  # Ignore all warnings by default
+        warnings.simplefilter("always", UserWarning)  # But capture UserWarnings
 
         # Test frame comparison
         fd = frechet_distance(
@@ -284,4 +286,10 @@ def test_skip_connection_warning():
         )
         assert isinstance(fd, float)
 
-        assert len(record) == 0, "Warning was issued for a dataset without skip connections"
+        # Check only UserWarnings related to skip connections
+        skip_connection_warnings = [
+            w for w in record if w.category is UserWarning and "skip connections" in str(w.message)
+        ]
+        assert len(skip_connection_warnings) == 0, (
+            "Skip connection warning was issued for a dataset without skip connections"
+        )
