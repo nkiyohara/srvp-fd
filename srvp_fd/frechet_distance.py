@@ -293,6 +293,7 @@ class FrechetDistanceCalculator:
         images1: torch.Tensor,
         images2: torch.Tensor,
         comparison_type: Literal["frame", "static_content", "dynamics"] = "frame",
+        batch_size: int = None,
     ) -> float:
         """Calculate the Fréchet distance between two sets of images or videos.
 
@@ -307,6 +308,8 @@ class FrechetDistanceCalculator:
                 - "static_content": Compare static content information (w) that
                     captures scene/object appearance
                 - "dynamics": Compare dynamics information (q_y_0) that captures motion patterns
+            batch_size: Optional batch size for processing large datasets. If None, processes
+                all data at once. Use this to reduce GPU memory usage for large datasets.
 
         Returns:
             The Fréchet distance between the two sets.
@@ -318,10 +321,22 @@ class FrechetDistanceCalculator:
             # Validate input shapes for frame comparison_type
             _validate_input_shapes(images1, images2)
 
-            # Extract features
-            with torch.no_grad():
-                features1 = self.model.encoder(images1.to(self.device))
-                features2 = self.model.encoder(images2.to(self.device))
+            # Extract features (with optional batching)
+            if batch_size is None or batch_size >= images1.shape[0]:
+                with torch.no_grad():
+                    features1 = self.model.encoder(images1.to(self.device))
+                    features2 = self.model.encoder(images2.to(self.device))
+            else:
+                # Process in batches
+                def extract_frame_features(batch):
+                    return self.model.encoder(batch.to(self.device))
+
+                features1 = self._extract_features_in_batches(
+                    images1, batch_size, extract_frame_features
+                )
+                features2 = self._extract_features_in_batches(
+                    images2, batch_size, extract_frame_features
+                )
 
             # Calculate Fréchet distance
             return self._calculate_frechet_distance_from_features(features1, features2)
@@ -330,14 +345,31 @@ class FrechetDistanceCalculator:
             # Validate video input shapes
             _validate_video_input_shapes(images1, images2, self.model)
 
-            # Extract w or q_y_0_params
+            # Extract w or q_y_0_params (with optional batching)
             if comparison_type == "static_content":
-                features1 = self._extract_w(images1)
-                features2 = self._extract_w(images2)
+                if batch_size is None or batch_size >= images1.shape[0]:
+                    features1 = self._extract_w(images1)
+                    features2 = self._extract_w(images2)
+                else:
+                    features1 = self._extract_features_in_batches(
+                        images1, batch_size, self._extract_w
+                    )
+                    features2 = self._extract_features_in_batches(
+                        images2, batch_size, self._extract_w
+                    )
                 return self._calculate_frechet_distance_from_features(features1, features2)
+
             # comparison_type == "dynamics"
-            q_y_0_params1 = self._extract_q_y_0_params(images1)
-            q_y_0_params2 = self._extract_q_y_0_params(images2)
+            if batch_size is None or batch_size >= images1.shape[0]:
+                q_y_0_params1 = self._extract_q_y_0_params(images1)
+                q_y_0_params2 = self._extract_q_y_0_params(images2)
+            else:
+                q_y_0_params1 = self._extract_features_in_batches(
+                    images1, batch_size, self._extract_q_y_0_params
+                )
+                q_y_0_params2 = self._extract_features_in_batches(
+                    images2, batch_size, self._extract_q_y_0_params
+                )
             return self._calculate_frechet_distance_from_gaussian_params(
                 q_y_0_params1, q_y_0_params2
             )
@@ -364,6 +396,31 @@ class FrechetDistanceCalculator:
             hx, _ = self.model.encode(videos_permuted.to(self.device))
             # Extract static content w
             return self.model.infer_w(hx)
+
+    def _extract_features_in_batches(
+        self, images: torch.Tensor, batch_size: int, extraction_fn
+    ) -> torch.Tensor:
+        """Extract features in batches to handle memory constraints.
+
+        Args:
+            images: Input tensor to process
+            batch_size: Size of each processing batch
+            extraction_fn: Function to extract features from a batch
+
+        Returns:
+            Concatenated features from all batches
+        """
+        features_list = []
+        num_samples = images.shape[0]
+
+        for i in range(0, num_samples, batch_size):
+            end_idx = min(i + batch_size, num_samples)
+            batch = images[i:end_idx]
+            with torch.no_grad():
+                batch_features = extraction_fn(batch)
+            features_list.append(batch_features)
+
+        return torch.cat(features_list, dim=0)
 
     def _extract_q_y_0_params(self, videos: torch.Tensor) -> torch.Tensor:
         """Extract dynamics information (q_y_0_params) from videos.
@@ -528,6 +585,7 @@ def frechet_distance(
     dataset: DatasetType = "mmnist_stochastic",
     comparison_type: Literal["frame", "static_content", "dynamics"] = "frame",
     device: Union[str, torch.device] = None,
+    batch_size: int = None,
 ) -> float:
     """Calculate the Fréchet distance between two sets of images or videos.
 
@@ -545,6 +603,8 @@ def frechet_distance(
                 captures scene/object appearance
             - "dynamics": Compare dynamics information (q_y_0) that captures motion patterns
         device: Device to use for computation. If None, will use CUDA if available, otherwise CPU.
+        batch_size: Optional batch size for processing large datasets. If None, processes
+            all data at once. Use this to reduce GPU memory usage for large datasets.
 
     Returns:
         The Fréchet distance between the two sets.
@@ -553,4 +613,4 @@ def frechet_distance(
         ValueError: If the input shapes are invalid or comparison_type is unrecognized.
     """
     calculator = FrechetDistanceCalculator(dataset=dataset, device=device)
-    return calculator(images1, images2, comparison_type=comparison_type)
+    return calculator(images1, images2, comparison_type=comparison_type, batch_size=batch_size)
