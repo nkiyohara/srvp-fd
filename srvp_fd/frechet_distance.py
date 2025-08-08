@@ -37,7 +37,7 @@ def _calculate_frechet_distance_numpy(
     sigma1: np.ndarray,
     mu2: np.ndarray,
     sigma2: np.ndarray,
-    eps: float = 1e-6,
+    eps: float = 1e-10,
 ) -> float:
     """Calculate Fréchet Distance with enhanced numerical stability.
 
@@ -57,7 +57,7 @@ def _calculate_frechet_distance_numpy(
         sigma1: Covariance matrix of the first Gaussian distribution
         mu2: Mean vector of the second Gaussian distribution
         sigma2: Covariance matrix of the second Gaussian distribution
-        eps: Small value to add to diagonal for numerical stability (default: 1e-6)
+        eps: Small value to add to diagonal for numerical stability (default: 1e-10)
 
     Returns:
         Fréchet distance between the two distributions
@@ -446,7 +446,7 @@ class FrechetDistanceCalculator:
         images1: torch.Tensor,
         images2: torch.Tensor,
         comparison_type: Literal["frame", "static_content", "dynamics"] = "frame",
-        eps: float = 1e-6,
+        eps: float = 1e-10,
         batch_size: int = None,
     ) -> float:
         """Calculate the Fréchet distance between two sets of images or videos.
@@ -462,7 +462,7 @@ class FrechetDistanceCalculator:
                 - "static_content": Compare static content information (w) that
                     captures scene/object appearance
                 - "dynamics": Compare dynamics information (q_y_0) that captures motion patterns
-            eps: Small value to add to diagonal for numerical stability (default: 1e-6)
+            eps: Small value to add to diagonal for numerical stability (default: 1e-10)
             batch_size: Optional batch size for processing large datasets. If None, processes
                 all data at once. Use this to reduce GPU memory usage for large datasets.
 
@@ -596,14 +596,14 @@ class FrechetDistanceCalculator:
             return q_y_0_params
 
     def _calculate_frechet_distance_from_features(
-        self, features1: torch.Tensor, features2: torch.Tensor, eps: float = 1e-6
+        self, features1: torch.Tensor, features2: torch.Tensor, eps: float = 1e-10
     ) -> float:
         """Calculate Fréchet distance from features.
 
         Args:
             features1: First set of features. Shape: [batch_size, feature_dim]
             features2: Second set of features. Shape: [batch_size, feature_dim]
-            eps: Small value to add to diagonal for numerical stability (default: 1e-6)
+            eps: Small value to add to diagonal for numerical stability (default: 1e-10)
 
         Returns:
             The Fréchet distance between the two sets of features.
@@ -624,7 +624,7 @@ class FrechetDistanceCalculator:
         return _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2, eps=eps)
 
     def _calculate_frechet_distance_from_gaussian_params(
-        self, params1: torch.Tensor, params2: torch.Tensor, eps: float = 1e-6
+        self, params1: torch.Tensor, params2: torch.Tensor, eps: float = 1e-10
     ) -> float:
         """Calculate Fréchet distance from Gaussian mixture parameters.
 
@@ -635,7 +635,7 @@ class FrechetDistanceCalculator:
         Args:
             params1: First set of Gaussian parameters. Shape: [batch_size, 2*ny]
             params2: Second set of Gaussian parameters. Shape: [batch_size, 2*ny]
-            eps: Small value to add to diagonal for numerical stability (default: 1e-6)
+            eps: Small value to add to diagonal for numerical stability (default: 1e-10)
 
         Returns:
             The Fréchet distance between the two Gaussian mixtures.
@@ -749,7 +749,7 @@ def frechet_distance(
     dataset: DatasetType = "mmnist_stochastic",
     comparison_type: Literal["frame", "static_content", "dynamics"] = "frame",
     device: Union[str, torch.device] = None,
-    eps: float = 1e-6,
+    eps: float = 1e-10,
     batch_size: int = None,
 ) -> float:
     """Calculate the Fréchet distance between two sets of images or videos.
@@ -768,7 +768,7 @@ def frechet_distance(
                 captures scene/object appearance
             - "dynamics": Compare dynamics information (q_y_0) that captures motion patterns
         device: Device to use for computation. If None, will use CUDA if available, otherwise CPU.
-        eps: Small value to add to diagonal for numerical stability (default: 1e-6)
+        eps: Small value to add to diagonal for numerical stability (default: 1e-10)
         batch_size: Optional batch size for processing large datasets. If None, processes
             all data at once. Use this to reduce GPU memory usage for large datasets.
 
