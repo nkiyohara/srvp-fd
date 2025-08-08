@@ -9,9 +9,11 @@ import os
 import warnings
 from typing import Literal, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
 from huggingface_hub import hf_hub_download
+from scipy import linalg
 
 # Import the SRVP model components
 from .srvp_model import StochasticLatentResidualVideoPredictor
@@ -29,31 +31,10 @@ DATASET_PATHS = {
 }
 
 
-def _matrix_sqrt(matrix: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
-    """Compute the square root of a positive‑definite matrix.
-
-    Args:
-        matrix: A positive‑definite matrix.
-        eps: Small epsilon value for numerical stability.
-
-    Returns:
-        The matrix square root.
-    """
-    # Add a small value to the diagonal for numerical stability
-    matrix = matrix + torch.eye(matrix.size(0), device=matrix.device) * eps
-
-    # Compute the eigendecomposition
-    eigenvalues, eigenvectors = torch.linalg.eigh(matrix)
-
-    # Compute the square root using the eigendecomposition
-    sqrt_eigenvalues = torch.sqrt(torch.clamp(eigenvalues, min=eps))
-    return eigenvectors @ torch.diag(sqrt_eigenvalues) @ eigenvectors.T
-
-
-def _calculate_frechet_distance(
-    mu1: torch.Tensor, sigma1: torch.Tensor, mu2: torch.Tensor, sigma2: torch.Tensor
+def _calculate_frechet_distance_numpy(
+    mu1: np.ndarray, sigma1: np.ndarray, mu2: np.ndarray, sigma2: np.ndarray
 ) -> float:
-    """Calculate Fréchet Distance between two multivariate Gaussians.
+    """Calculate Fréchet Distance between two multivariate Gaussians using NumPy/SciPy.
 
     Args:
         mu1: Mean of the first Gaussian distribution
@@ -64,20 +45,33 @@ def _calculate_frechet_distance(
     Returns:
         Fréchet distance between the two distributions
     """
+    # Ensure float64 precision for better numerical stability
+    mu1 = mu1.astype(np.float64)
+    mu2 = mu2.astype(np.float64)
+    sigma1 = sigma1.astype(np.float64)
+    sigma2 = sigma2.astype(np.float64)
+
     # Calculate squared difference between means
     diff = mu1 - mu2
+    mean_diff_squared = np.sum(diff * diff)
 
-    # Product of covariances
-    covmean = _matrix_sqrt(sigma1 @ sigma2)
+    # Product of covariances using scipy's matrix square root
+    covmean = linalg.sqrtm(sigma1.dot(sigma2))
+
+    # Take real part if complex (due to numerical errors)
+    if np.iscomplexobj(covmean):
+        covmean = covmean.real
 
     # If covmean has any non-finite values, retry with a diagonal offset
-    if not torch.isfinite(covmean).all():
-        offset = torch.eye(sigma1.size(0), device=sigma1.device) * 1e-6
-        covmean = _matrix_sqrt((sigma1 + offset) @ (sigma2 + offset))
+    if not np.isfinite(covmean).all():
+        offset = np.eye(sigma1.shape[0]) * 1e-6
+        covmean = linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
+        if np.iscomplexobj(covmean):
+            covmean = covmean.real
 
     # Calculate Fréchet distance
-    tr_covmean = torch.trace(covmean)
-    fd = float((diff @ diff) + torch.trace(sigma1) + torch.trace(sigma2) - 2 * tr_covmean)
+    tr_covmean = np.trace(covmean)
+    fd = float(mean_diff_squared + np.trace(sigma1) + np.trace(sigma2) - 2 * tr_covmean)
 
     return max(fd, 0.0)  # Ensure non-negative result due to numerical precision
 
@@ -453,18 +447,20 @@ class FrechetDistanceCalculator:
         Returns:
             The Fréchet distance between the two sets of features.
         """
-        # Calculate mean and covariance
-        mu1 = torch.mean(features1, dim=0)
-        # Covariance calculation
-        centered1 = features1 - mu1.unsqueeze(0)
-        sigma1 = (centered1.T @ centered1) / (features1.size(0) - 1)
+        # Convert to NumPy and float64 for statistical calculations
+        features1_np = features1.detach().cpu().numpy().astype(np.float64)
+        features2_np = features2.detach().cpu().numpy().astype(np.float64)
 
-        mu2 = torch.mean(features2, dim=0)
-        centered2 = features2 - mu2.unsqueeze(0)
-        sigma2 = (centered2.T @ centered2) / (features2.size(0) - 1)
+        # Calculate mean and covariance using NumPy
+        mu1 = np.mean(features1_np, axis=0)
+        mu2 = np.mean(features2_np, axis=0)
 
-        # Calculate Fréchet distance
-        return _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
+        # Calculate covariance matrices
+        sigma1 = np.cov(features1_np, rowvar=False, ddof=1)
+        sigma2 = np.cov(features2_np, rowvar=False, ddof=1)
+
+        # Calculate Fréchet distance using NumPy/SciPy implementation
+        return _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
 
     def _calculate_frechet_distance_from_gaussian_params(
         self, params1: torch.Tensor, params2: torch.Tensor
@@ -501,9 +497,15 @@ class FrechetDistanceCalculator:
         var1_samples = scale1_samples**2
         var2_samples = scale2_samples**2
 
+        # Convert to NumPy and float64 for statistical calculations
+        mu1_samples_np = mu1_samples.detach().cpu().numpy().astype(np.float64)
+        mu2_samples_np = mu2_samples.detach().cpu().numpy().astype(np.float64)
+        var1_samples_np = var1_samples.detach().cpu().numpy().astype(np.float64)
+        var2_samples_np = var2_samples.detach().cpu().numpy().astype(np.float64)
+
         # Moment matching for the first mixture
         # Mean of the mixture is the average of the component means
-        mu1 = torch.mean(mu1_samples, dim=0)  # Shape: [ny]
+        mu1 = np.mean(mu1_samples_np, axis=0)  # Shape: [ny]
 
         # Covariance of the mixture combines component covariances and means
         # Cov = E[Cov] + Cov[E]
@@ -511,25 +513,25 @@ class FrechetDistanceCalculator:
         # Cov[E] is covariance of component means
 
         # Average of component variances (diagonal covariance matrices)
-        avg_var1 = torch.mean(var1_samples, dim=0)
-        e_cov1 = torch.diag(avg_var1)
+        avg_var1 = np.mean(var1_samples_np, axis=0)
+        e_cov1 = np.diag(avg_var1)
 
         # Covariance of component means
-        centered_mu1 = mu1_samples - mu1.unsqueeze(0)
-        cov_e1 = (centered_mu1.T @ centered_mu1) / (mu1_samples.size(0) - 1)
+        centered_mu1 = mu1_samples_np - mu1
+        cov_e1 = (centered_mu1.T @ centered_mu1) / (mu1_samples_np.shape[0] - 1)
         sigma1 = e_cov1 + cov_e1
 
         # Repeat for the second mixture
-        mu2 = torch.mean(mu2_samples, dim=0)
-        avg_var2 = torch.mean(var2_samples, dim=0)
-        e_cov2 = torch.diag(avg_var2)
+        mu2 = np.mean(mu2_samples_np, axis=0)
+        avg_var2 = np.mean(var2_samples_np, axis=0)
+        e_cov2 = np.diag(avg_var2)
 
-        centered_mu2 = mu2_samples - mu2.unsqueeze(0)
-        cov_e2 = (centered_mu2.T @ centered_mu2) / (mu2_samples.size(0) - 1)
+        centered_mu2 = mu2_samples_np - mu2
+        cov_e2 = (centered_mu2.T @ centered_mu2) / (mu2_samples_np.shape[0] - 1)
         sigma2 = e_cov2 + cov_e2
 
         # Calculate Fréchet distance between the two Gaussian mixtures
-        return _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
+        return _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
 
     def extract_features(self, images: torch.Tensor) -> torch.Tensor:
         """Extract features from a set of images.

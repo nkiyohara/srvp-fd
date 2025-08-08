@@ -2,6 +2,8 @@
 
 import warnings
 
+import numpy as np
+
 try:
     import pytest
     import torch
@@ -13,41 +15,41 @@ except ImportError:
 from srvp_fd.frechet_distance import (
     DATASET_PATHS,
     FrechetDistanceCalculator,
-    _calculate_frechet_distance,
+    _calculate_frechet_distance_numpy,
     frechet_distance,
 )
 
 
 def test_calculate_frechet_distance():
-    """Test the _calculate_frechet_distance function."""
+    """Test the _calculate_frechet_distance_numpy function."""
     # Create two identical distributions
-    mu1 = torch.tensor([0.0, 0.0, 0.0])
-    sigma1 = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
-    mu2 = torch.tensor([0.0, 0.0, 0.0])
-    sigma2 = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    mu1 = np.array([0.0, 0.0, 0.0])
+    sigma1 = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    mu2 = np.array([0.0, 0.0, 0.0])
+    sigma2 = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
 
     # The Fréchet distance between identical distributions should be 0
-    fd = _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
+    fd = _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
     assert fd == pytest.approx(0.0, abs=1e-6)
 
     # Create two different distributions
-    mu1 = torch.tensor([0.0, 0.0, 0.0])
-    sigma1 = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
-    mu2 = torch.tensor([1.0, 1.0, 1.0])
-    sigma2 = torch.tensor([[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]])
+    mu1 = np.array([0.0, 0.0, 0.0])
+    sigma1 = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    mu2 = np.array([1.0, 1.0, 1.0])
+    sigma2 = np.array([[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]])
 
     # The Fréchet distance between these distributions should be positive
-    fd = _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
+    fd = _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
     assert fd > 0.0
 
     # Test with near-zero values in sigma matrices
-    mu1 = torch.tensor([0.0, 0.0, 0.0])
-    sigma1 = torch.tensor([[1e-10, 0.0, 0.0], [0.0, 1e-10, 0.0], [0.0, 0.0, 1e-10]])
-    mu2 = torch.tensor([0.0, 0.0, 0.0])
-    sigma2 = torch.tensor([[1e-10, 0.0, 0.0], [0.0, 1e-10, 0.0], [0.0, 0.0, 1e-10]])
+    mu1 = np.array([0.0, 0.0, 0.0])
+    sigma1 = np.array([[1e-10, 0.0, 0.0], [0.0, 1e-10, 0.0], [0.0, 0.0, 1e-10]])
+    mu2 = np.array([0.0, 0.0, 0.0])
+    sigma2 = np.array([[1e-10, 0.0, 0.0], [0.0, 1e-10, 0.0], [0.0, 0.0, 1e-10]])
 
-    # Should not raise an error due to the offset added
-    fd = _calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
+    # Should not raise an error due to SciPy's robust implementation
+    fd = _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
     assert fd >= 0.0
 
 
