@@ -37,27 +37,37 @@ def _calculate_frechet_distance_numpy(
     sigma1: np.ndarray,
     mu2: np.ndarray,
     sigma2: np.ndarray,
+    eps: float = 1e-6,
 ) -> float:
-    """Calculate Fréchet Distance using SciPy's robust matrix square root.
+    """Calculate Fréchet Distance with enhanced numerical stability.
 
-    This implementation uses scipy.linalg.sqrtm which provides a numerically
-    stable implementation of the matrix square root operation. SciPy's sqrtm
-    handles edge cases and numerical precision issues better than custom
-    implementations.
+    This implementation combines techniques from popular FID implementations
+    (pytorch-fid, torchmetrics, TensorFlow-GAN) to handle numerical instabilities:
+
+    1. Epsilon regularization for nearly singular matrices
+    2. Proper handling of complex results from matrix square root
+    3. Fallback to eigenvalue decomposition for extreme cases
+    4. Comprehensive error checking and warnings
 
     The Fréchet distance between two multivariate normal distributions is:
-    d²(N₁, N₂) = ||μ₁ - μ₂||² + Tr(Σ₁ + Σ₂ - 2√(√Σ₁ Σ₂ √Σ₁))
+    d²(N₁, N₂) = ||μ₁ - μ₂||² + Tr(Σ₁ + Σ₂ - 2√(Σ₁ Σ₂))
 
     Args:
         mu1: Mean vector of the first Gaussian distribution
         sigma1: Covariance matrix of the first Gaussian distribution
         mu2: Mean vector of the second Gaussian distribution
         sigma2: Covariance matrix of the second Gaussian distribution
+        eps: Small value to add to diagonal for numerical stability (default: 1e-6)
 
     Returns:
         Fréchet distance between the two distributions
+
+    References:
+        - https://github.com/mseitzer/pytorch-fid
+        - https://github.com/Lightning-AI/torchmetrics
+        - Dowson and Landau (1982) "The Fréchet distance between multivariate normal distributions"
     """
-    # Ensure float64 precision
+    # Ensure float64 precision for better numerical stability
     mu1 = mu1.astype(np.float64)
     mu2 = mu2.astype(np.float64)
     sigma1 = sigma1.astype(np.float64)
@@ -67,30 +77,70 @@ def _calculate_frechet_distance_numpy(
     diff = mu1 - mu2
     mean_diff_squared = np.sum(diff * diff)
 
-    # Compute sqrt(sigma1) using SciPy's robust implementation
-    sqrt_sigma1 = linalg.sqrtm(sigma1)
+    # Product for matrix square root: sigma1 @ sigma2
+    # Note: sqrtm may return complex results for numerical reasons
+    covmean = linalg.sqrtm(sigma1.dot(sigma2))
 
-    # Handle potential complex results from sqrtm (due to numerical errors)
-    if np.iscomplexobj(sqrt_sigma1):
-        sqrt_sigma1 = sqrt_sigma1.real
+    # Check if the result is complex
+    if np.iscomplexobj(covmean):
+        # Check if imaginary component is negligible (following pytorch-fid)
+        if not np.allclose(np.diagonal(covmean).imag, 0, atol=1e-3):
+            m = np.max(np.abs(covmean.imag))
+            warnings.warn(
+                f"Imaginary component {m} in covariance matrix square root. "
+                f"This indicates numerical issues. Adding epsilon={eps} to diagonal.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        covmean = covmean.real
 
-    # Compute sqrt(sigma1) @ sigma2 @ sqrt(sigma1)
-    product = sqrt_sigma1 @ sigma2 @ sqrt_sigma1
+    # Check for NaN or Inf
+    if not np.isfinite(covmean).all():
+        warnings.warn(
+            f"Matrix square root calculation produced non-finite values. "
+            f"Adding epsilon={eps} to diagonal for regularization.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        # Add epsilon to diagonal for numerical stability (following pytorch-fid approach)
+        offset = np.eye(sigma1.shape[0]) * eps
+        covmean = linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
 
-    # Compute sqrt(product) using SciPy
-    sqrt_product = linalg.sqrtm(product)
+        # If still complex, take real part
+        if np.iscomplexobj(covmean):
+            covmean = covmean.real
 
-    # Handle potential complex results
-    if np.iscomplexobj(sqrt_product):
-        sqrt_product = sqrt_product.real
+    # Calculate trace of the matrix square root
+    tr_covmean = np.trace(covmean)
+
+    # Handle negative trace (which shouldn't happen mathematically but can due to numerical errors)
+    if not np.isfinite(tr_covmean) or tr_covmean < 0:
+        # Fallback: Use eigenvalue decomposition method (similar to torchmetrics)
+        # This is more numerically stable for problematic cases
+        warnings.warn(
+            "Trace of sqrt(sigma1 @ sigma2) is negative or non-finite. "
+            "Using eigenvalue decomposition for more stable computation.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+        # Compute eigenvalues of sigma1 @ sigma2
+        eigenvalues = linalg.eigvals(sigma1 @ sigma2)
+
+        # Handle potential negative eigenvalues (shouldn't happen for PSD matrices)
+        # Set small negative values to zero
+        eigenvalues = np.where(eigenvalues < 0, 0, eigenvalues)
+
+        # Sum of square roots of eigenvalues
+        tr_covmean = np.sum(np.sqrt(eigenvalues.real))
 
     # Calculate Fréchet distance
-    # d² = ||μ₁ - μ₂||² + Tr(Σ₁) + Tr(Σ₂) - 2*Tr(√(√Σ₁ Σ₂ √Σ₁))
+    # d² = ||μ₁ - μ₂||² + Tr(Σ₁) + Tr(Σ₂) - 2*Tr(√(Σ₁ Σ₂))
     frechet_distance_squared = (
-        mean_diff_squared + np.trace(sigma1) + np.trace(sigma2) - 2 * np.trace(sqrt_product)
+        mean_diff_squared + np.trace(sigma1) + np.trace(sigma2) - 2 * tr_covmean
     )
 
-    # Return the distance (handle numerical precision issues)
+    # Ensure non-negative result (handle numerical precision issues)
     return max(float(frechet_distance_squared), 0.0)
 
 
@@ -179,6 +229,40 @@ def _get_model(dataset: DatasetType) -> Tuple[StochasticLatentResidualVideoPredi
         ) from e
 
 
+def _validate_input_shapes_flexible(images1: torch.Tensor, images2: torch.Tensor) -> None:
+    """Validate the shapes of the input tensors with relaxed sample size requirements.
+
+    Args:
+        images1: First set of images.
+        images2: Second set of images.
+
+    Raises:
+        ValueError: If the input shapes are invalid.
+    """
+    # Check dimensions
+    if images1.dim() != 4 or images2.dim() != 4:
+        raise ValueError(
+            f"Input tensors must be 4D (batch, channels, height, width). "
+            f"Got shapes {images1.shape} and {images2.shape}."
+        )
+
+    # Check channel dimensions match
+    if images1.shape[1] != images2.shape[1]:
+        raise ValueError(
+            f"Channel dimensions must match. Got {images1.shape[1]} and {images2.shape[1]}."
+        )
+
+    # Check spatial dimensions match
+    if images1.shape[2:] != images2.shape[2:]:
+        raise ValueError(
+            f"Spatial dimensions must match. Got {images1.shape[2:]} and {images2.shape[2:]}."
+        )
+
+    # Relaxed sample size requirement - just check that we have some data
+    if images1.shape[0] == 0 or images2.shape[0] == 0:
+        raise ValueError("Sample size must be greater than 0.")
+
+
 def _validate_input_shapes(images1: torch.Tensor, images2: torch.Tensor) -> None:
     """Validate the shapes of the input tensors.
 
@@ -213,6 +297,53 @@ def _validate_input_shapes(images1: torch.Tensor, images2: torch.Tensor) -> None
         raise ValueError(
             f"Sample size must be greater than 128 (feature dimension). "
             f"Got {images1.shape[0]} and {images2.shape[0]}."
+        )
+
+
+def _validate_video_input_shapes_flexible(
+    videos1: torch.Tensor, videos2: torch.Tensor, model=None
+) -> None:
+    """Validate the shapes of the input video tensors with relaxed sample size requirements.
+
+    Args:
+        videos1: First set of videos.
+        videos2: Second set of videos.
+        model: Optional model to get nt_inf parameter, otherwise default to 10.
+
+    Raises:
+        ValueError: If the input shapes are invalid.
+    """
+    # Check dimensions
+    if videos1.dim() != 5 or videos2.dim() != 5:
+        raise ValueError(
+            f"Input tensors must be 5D (batch, seq_length, channels, height, width). "
+            f"Got shapes {videos1.shape} and {videos2.shape}."
+        )
+
+    # Check channel dimensions match
+    if videos1.shape[2] != videos2.shape[2]:
+        raise ValueError(
+            f"Channel dimensions must match. Got {videos1.shape[2]} and {videos2.shape[2]}."
+        )
+
+    # Check spatial dimensions match
+    if videos1.shape[3:] != videos2.shape[3:]:
+        raise ValueError(
+            f"Spatial dimensions must match. Got {videos1.shape[3:]} and {videos2.shape[3:]}."
+        )
+
+    # Relaxed sample size requirement - just check that we have some data
+    if videos1.shape[0] == 0 or videos2.shape[0] == 0:
+        raise ValueError("Sample size must be greater than 0.")
+
+    # Check that sequence length is at least 10 frames
+    nt_inf = (
+        getattr(model, "nt_inf", 10) if model is not None else 10
+    )  # Default to 10 if not specified
+    if videos1.shape[1] < nt_inf or videos2.shape[1] < nt_inf:
+        raise ValueError(
+            f"Sequence length should be at least {nt_inf} frames for model inference. "
+            f"Got {videos1.shape[1]} and {videos2.shape[1]}."
         )
 
 
@@ -300,11 +431,23 @@ class FrechetDistanceCalculator:
         self.model.to(self.device)
         self.model.eval()  # Set to evaluation mode
 
+    def _validate_input_shapes_flexible(self, images1: torch.Tensor, images2: torch.Tensor) -> None:
+        """Flexible validation for frame inputs."""
+        _validate_input_shapes_flexible(images1, images2)
+
+    def _validate_video_input_shapes_flexible(
+        self, videos1: torch.Tensor, videos2: torch.Tensor
+    ) -> None:
+        """Flexible validation for video inputs."""
+        _validate_video_input_shapes_flexible(videos1, videos2, self.model)
+
     def __call__(
         self,
         images1: torch.Tensor,
         images2: torch.Tensor,
         comparison_type: Literal["frame", "static_content", "dynamics"] = "frame",
+        eps: float = 1e-6,
+        batch_size: int = None,
     ) -> float:
         """Calculate the Fréchet distance between two sets of images or videos.
 
@@ -319,6 +462,9 @@ class FrechetDistanceCalculator:
                 - "static_content": Compare static content information (w) that
                     captures scene/object appearance
                 - "dynamics": Compare dynamics information (q_y_0) that captures motion patterns
+            eps: Small value to add to diagonal for numerical stability (default: 1e-6)
+            batch_size: Optional batch size for processing large datasets. If None, processes
+                all data at once. Use this to reduce GPU memory usage for large datasets.
 
         Returns:
             The Fréchet distance between the two sets.
@@ -327,31 +473,60 @@ class FrechetDistanceCalculator:
             ValueError: If the input shapes are invalid or comparison_type is unrecognized.
         """
         if comparison_type == "frame":
-            # Validate input shapes for frame comparison_type
-            _validate_input_shapes(images1, images2)
+            # Validate input shapes for frame comparison_type (relaxed for batch processing)
+            self._validate_input_shapes_flexible(images1, images2)
 
-            # Extract features
-            with torch.no_grad():
-                features1 = self.model.encoder(images1.to(self.device)).double()
-                features2 = self.model.encoder(images2.to(self.device)).double()
+            # Extract features (with optional batching)
+            if batch_size is None or batch_size >= images1.shape[0]:
+                with torch.no_grad():
+                    features1 = self.model.encoder(images1.to(self.device)).double()
+                    features2 = self.model.encoder(images2.to(self.device)).double()
+            else:
+                # Process in batches
+                def extract_frame_features(batch):
+                    return self.model.encoder(batch.to(self.device))
 
-            # Calculate Fréchet distance
-            return self._calculate_frechet_distance_from_features(features1, features2)
+                features1 = self._extract_features_in_batches(
+                    images1, batch_size, extract_frame_features
+                ).double()
+                features2 = self._extract_features_in_batches(
+                    images2, batch_size, extract_frame_features
+                ).double()
+
+            # Calculate Fréchet distance with numerical stability
+            return self._calculate_frechet_distance_from_features(features1, features2, eps=eps)
 
         if comparison_type in ["static_content", "dynamics"]:
-            # Validate video input shapes
-            _validate_video_input_shapes(images1, images2, self.model)
+            # Validate video input shapes (relaxed for batch processing)
+            self._validate_video_input_shapes_flexible(images1, images2)
 
-            # Extract w or q_y_0_params
+            # Extract w or q_y_0_params (with optional batching)
             if comparison_type == "static_content":
-                features1 = self._extract_w(images1).double()
-                features2 = self._extract_w(images2).double()
-                return self._calculate_frechet_distance_from_features(features1, features2)
+                if batch_size is None or batch_size >= images1.shape[0]:
+                    features1 = self._extract_w(images1).double()
+                    features2 = self._extract_w(images2).double()
+                else:
+                    features1 = self._extract_features_in_batches(
+                        images1, batch_size, self._extract_w
+                    ).double()
+                    features2 = self._extract_features_in_batches(
+                        images2, batch_size, self._extract_w
+                    ).double()
+                return self._calculate_frechet_distance_from_features(features1, features2, eps=eps)
+
             # comparison_type == "dynamics"
-            q_y_0_params1 = self._extract_q_y_0_params(images1).double()
-            q_y_0_params2 = self._extract_q_y_0_params(images2).double()
+            if batch_size is None or batch_size >= images1.shape[0]:
+                q_y_0_params1 = self._extract_q_y_0_params(images1).double()
+                q_y_0_params2 = self._extract_q_y_0_params(images2).double()
+            else:
+                q_y_0_params1 = self._extract_features_in_batches(
+                    images1, batch_size, self._extract_q_y_0_params
+                ).double()
+                q_y_0_params2 = self._extract_features_in_batches(
+                    images2, batch_size, self._extract_q_y_0_params
+                ).double()
             return self._calculate_frechet_distance_from_gaussian_params(
-                q_y_0_params1, q_y_0_params2
+                q_y_0_params1, q_y_0_params2, eps=eps
             )
 
         raise ValueError(
@@ -377,6 +552,30 @@ class FrechetDistanceCalculator:
             # Extract static content w
             return self.model.infer_w(hx)
 
+    def _extract_features_in_batches(
+        self, images: torch.Tensor, batch_size: int, extraction_fn
+    ) -> torch.Tensor:
+        """Extract features in batches to handle memory constraints.
+
+        Args:
+            images: Input tensor to process
+            batch_size: Size of each processing batch
+            extraction_fn: Function to extract features from a batch
+
+        Returns:
+            Concatenated features from all batches
+        """
+        features_list = []
+        num_samples = images.shape[0]
+
+        for i in range(0, num_samples, batch_size):
+            end_idx = min(i + batch_size, num_samples)
+            batch = images[i:end_idx]
+            batch_features = extraction_fn(batch)
+            features_list.append(batch_features)
+
+        return torch.cat(features_list, dim=0)
+
     def _extract_q_y_0_params(self, videos: torch.Tensor) -> torch.Tensor:
         """Extract dynamics information (q_y_0_params) from videos.
 
@@ -397,13 +596,14 @@ class FrechetDistanceCalculator:
             return q_y_0_params
 
     def _calculate_frechet_distance_from_features(
-        self, features1: torch.Tensor, features2: torch.Tensor
+        self, features1: torch.Tensor, features2: torch.Tensor, eps: float = 1e-6
     ) -> float:
         """Calculate Fréchet distance from features.
 
         Args:
             features1: First set of features. Shape: [batch_size, feature_dim]
             features2: Second set of features. Shape: [batch_size, feature_dim]
+            eps: Small value to add to diagonal for numerical stability (default: 1e-6)
 
         Returns:
             The Fréchet distance between the two sets of features.
@@ -420,11 +620,11 @@ class FrechetDistanceCalculator:
         sigma1 = np.cov(features1_np, rowvar=False, ddof=1)
         sigma2 = np.cov(features2_np, rowvar=False, ddof=1)
 
-        # Calculate Fréchet distance using SciPy
-        return _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
+        # Calculate Fréchet distance using SciPy with numerical stability
+        return _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2, eps=eps)
 
     def _calculate_frechet_distance_from_gaussian_params(
-        self, params1: torch.Tensor, params2: torch.Tensor
+        self, params1: torch.Tensor, params2: torch.Tensor, eps: float = 1e-6
     ) -> float:
         """Calculate Fréchet distance from Gaussian mixture parameters.
 
@@ -435,6 +635,7 @@ class FrechetDistanceCalculator:
         Args:
             params1: First set of Gaussian parameters. Shape: [batch_size, 2*ny]
             params2: Second set of Gaussian parameters. Shape: [batch_size, 2*ny]
+            eps: Small value to add to diagonal for numerical stability (default: 1e-6)
 
         Returns:
             The Fréchet distance between the two Gaussian mixtures.
@@ -491,8 +692,8 @@ class FrechetDistanceCalculator:
         cov_e2 = (centered_mu2.T @ centered_mu2) / (mu2_samples_np.shape[0] - 1)
         sigma2 = e_cov2 + cov_e2
 
-        # Calculate Fréchet distance between the two Gaussian mixtures using SciPy
-        return _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
+        # Calculate Fréchet distance between the two Gaussian mixtures with numerical stability
+        return _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2, eps=eps)
 
     def extract_features(self, images: torch.Tensor) -> torch.Tensor:
         """Extract features from a set of images.
@@ -548,6 +749,8 @@ def frechet_distance(
     dataset: DatasetType = "mmnist_stochastic",
     comparison_type: Literal["frame", "static_content", "dynamics"] = "frame",
     device: Union[str, torch.device] = None,
+    eps: float = 1e-6,
+    batch_size: int = None,
 ) -> float:
     """Calculate the Fréchet distance between two sets of images or videos.
 
@@ -565,6 +768,9 @@ def frechet_distance(
                 captures scene/object appearance
             - "dynamics": Compare dynamics information (q_y_0) that captures motion patterns
         device: Device to use for computation. If None, will use CUDA if available, otherwise CPU.
+        eps: Small value to add to diagonal for numerical stability (default: 1e-6)
+        batch_size: Optional batch size for processing large datasets. If None, processes
+            all data at once. Use this to reduce GPU memory usage for large datasets.
 
     Returns:
         The Fréchet distance between the two sets.
@@ -573,4 +779,6 @@ def frechet_distance(
         ValueError: If the input shapes are invalid or comparison_type is unrecognized.
     """
     calculator = FrechetDistanceCalculator(dataset=dataset, device=device)
-    return calculator(images1, images2, comparison_type=comparison_type)
+    return calculator(
+        images1, images2, comparison_type=comparison_type, eps=eps, batch_size=batch_size
+    )

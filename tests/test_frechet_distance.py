@@ -2,6 +2,9 @@
 
 import warnings
 
+import numpy as np
+from scipy import linalg
+
 try:
     import pytest
     import torch
@@ -20,8 +23,6 @@ from srvp_fd.frechet_distance import (
 
 def test_calculate_frechet_distance():
     """Test the _calculate_frechet_distance_numpy function."""
-    import numpy as np
-
     # Create two identical distributions
     mu1 = np.array([0.0, 0.0, 0.0])
     sigma1 = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
@@ -283,6 +284,8 @@ def test_skip_connection_warning():
     # No warning should be issued for datasets without skip connections
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
+        # Filter out LinAlgWarnings from scipy which are unrelated to skip connections
+        warnings.filterwarnings("ignore", category=linalg.LinAlgWarning)
 
         # Test frame comparison
         fd = frechet_distance(
@@ -311,13 +314,15 @@ def test_skip_connection_warning():
         )
         assert isinstance(fd, float)
 
-        assert len(record) == 0, "Warning was issued for a dataset without skip connections"
+        # Filter out any LinAlgWarnings that might have been captured
+        skip_connection_warnings = [w for w in record if "skip connections" in str(w.message)]
+        assert len(skip_connection_warnings) == 0, (
+            "Warning was issued for a dataset without skip connections"
+        )
 
 
 def test_scipy_based_implementation():
     """Test that the SciPy-based implementation provides numerically stable results."""
-    import numpy as np
-
     from srvp_fd.frechet_distance import _calculate_frechet_distance_numpy
 
     # Test with identity matrices - should give zero distance for identical distributions
