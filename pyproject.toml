@@ -7,7 +7,7 @@ module-root = "."
 
 [project]
 name = "srvp-fd"
-version = "0.3.1"
+version = "0.4.0"
 description = "Fréchet distance calculator for video datasets using SRVP encoder"
 readme = "README.md"
 authors = [
