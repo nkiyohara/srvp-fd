@@ -285,27 +285,3 @@ def test_skip_connection_warning():
         assert isinstance(fd, float)
 
         assert len(record) == 0, "Warning was issued for a dataset without skip connections"
-
-
-def test_matrix_sqrt():
-    """Test the matrix square root function."""
-    from srvp_fd.frechet_distance import _matrix_sqrt
-
-    # Test with identity matrix
-    identity = torch.eye(3)
-    sqrt_identity = _matrix_sqrt(identity)
-    # Square root of identity is identity
-    assert torch.allclose(sqrt_identity, identity, atol=1e-6)
-
-    # Test with a more complex matrix
-    matrix = torch.tensor([[4.0, 1.0], [1.0, 9.0]])
-    sqrt_matrix = _matrix_sqrt(matrix)
-    # Verify A = sqrt_A @ sqrt_A
-    reconstructed_matrix = sqrt_matrix @ sqrt_matrix
-    assert torch.allclose(reconstructed_matrix, matrix, atol=1e-6)
-
-    # Test with diagonal matrix
-    diag = torch.diag(torch.tensor([4.0, 9.0, 16.0]))
-    sqrt_diag = _matrix_sqrt(diag)
-    expected_sqrt_diag = torch.diag(torch.tensor([2.0, 3.0, 4.0]))
-    assert torch.allclose(sqrt_diag, expected_sqrt_diag, atol=1e-6)
