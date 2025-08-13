@@ -31,8 +31,84 @@ DATASET_PATHS = {
 }
 
 
+def _symmetric_matrix_square_root_numpy(mat: np.ndarray, eps: float = 1e-10) -> np.ndarray:
+    """Matrix square root for symmetric matrices using SVD.
+
+    Applies thresholding to small singular values for numerical stability and
+    symmetrizes the result to reduce asymmetry from floating-point errors.
+    """
+    # SVD-based square root reconstruction
+    u, s, vh = np.linalg.svd(mat, full_matrices=False)
+    si = np.where(s < eps, s, np.sqrt(s))
+    root = u @ np.diag(si) @ vh
+    # Enforce symmetry
+    return (root + root.T) * 0.5
+
+
+def _calculate_trace_of_matrix_square_root(
+    sigma1: np.ndarray,
+    sigma2: np.ndarray,
+    method: Literal["schur", "svd"] = "schur",
+) -> float:
+    """Calculate the trace of the matrix square root of the product of two covariance matrices.
+
+    Args:
+        sigma1: First covariance matrix
+        sigma2: Second covariance matrix
+        method: Method to use for calculating the trace of the matrix square root.
+            Options: "schur", "svd"
+    """
+    if method == "schur":
+        # Product of covariances using scipy's matrix square root
+        covmean = linalg.sqrtm(sigma1.dot(sigma2))
+
+        # Take real part if complex (due to numerical errors)
+        if np.iscomplexobj(covmean):
+            covmean = covmean.real
+
+        # If covmean has any non-finite values, retry with a diagonal offset
+        if not np.isfinite(covmean).all():
+            offset = np.eye(sigma1.shape[0]) * 1e-10
+            covmean = linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
+            if np.iscomplexobj(covmean):
+                covmean = covmean.real
+
+        tr_covmean = float(np.trace(covmean))
+
+    elif method == "svd":
+        eps = 1e-10
+        # a_sqrt = sqrt(sigma1)
+        a_sqrt = _symmetric_matrix_square_root_numpy(sigma1, eps=eps)
+
+        # m_sym should be symmetric; symmetrize to mitigate numerical errors
+        m_sym = a_sqrt @ sigma2 @ a_sqrt
+        m_sym = (m_sym + m_sym.T) * 0.5
+
+        # sqrt(m_sym) via SVD-based routine
+        sqrt_m = _symmetric_matrix_square_root_numpy(m_sym, eps=eps)
+
+        if not np.isfinite(sqrt_m).all():
+            # Retry with small diagonal jitter
+            jitter = np.eye(sigma1.shape[0]) * 1e-10
+            a_sqrt = _symmetric_matrix_square_root_numpy(sigma1 + jitter, eps=eps)
+            m_sym = a_sqrt @ (sigma2 + jitter) @ a_sqrt
+            m_sym = (m_sym + m_sym.T) * 0.5
+            sqrt_m = _symmetric_matrix_square_root_numpy(m_sym, eps=eps)
+
+        tr_covmean = float(np.trace(sqrt_m))
+
+    else:
+        raise ValueError(f"Unknown method: {method}")
+
+    return tr_covmean
+
+
 def _calculate_frechet_distance_numpy(
-    mu1: np.ndarray, sigma1: np.ndarray, mu2: np.ndarray, sigma2: np.ndarray
+    mu1: np.ndarray,
+    sigma1: np.ndarray,
+    mu2: np.ndarray,
+    sigma2: np.ndarray,
+    method: Literal["schur", "svd"] = "schur",
 ) -> float:
     """Calculate Fréchet Distance between two multivariate Gaussians using NumPy/SciPy.
 
@@ -41,6 +117,8 @@ def _calculate_frechet_distance_numpy(
         sigma1: Covariance matrix of the first Gaussian distribution
         mu2: Mean of the second Gaussian distribution
         sigma2: Covariance matrix of the second Gaussian distribution
+        method: Method to use for calculating the trace of the matrix square root.
+            Options: "schur", "svd"
 
     Returns:
         Fréchet distance between the two distributions
@@ -55,22 +133,8 @@ def _calculate_frechet_distance_numpy(
     diff = mu1 - mu2
     mean_diff_squared = np.sum(diff * diff)
 
-    # Product of covariances using scipy's matrix square root
-    covmean = linalg.sqrtm(sigma1.dot(sigma2))
+    tr_covmean = _calculate_trace_of_matrix_square_root(sigma1, sigma2, method)
 
-    # Take real part if complex (due to numerical errors)
-    if np.iscomplexobj(covmean):
-        covmean = covmean.real
-
-    # If covmean has any non-finite values, retry with a diagonal offset
-    if not np.isfinite(covmean).all():
-        offset = np.eye(sigma1.shape[0]) * 1e-6
-        covmean = linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
-        if np.iscomplexobj(covmean):
-            covmean = covmean.real
-
-    # Calculate Fréchet distance
-    tr_covmean = np.trace(covmean)
     fd = float(mean_diff_squared + np.trace(sigma1) + np.trace(sigma2) - 2 * tr_covmean)
 
     return max(fd, 0.0)  # Ensure non-negative result due to numerical precision
@@ -262,6 +326,7 @@ class FrechetDistanceCalculator:
         self,
         dataset: DatasetType = "mmnist_stochastic",
         device: Union[str, torch.device] = None,
+        sqrt_trace_method: Literal["schur", "svd"] = "schur",
     ):
         """Initialize the Fréchet distance calculator.
 
@@ -270,6 +335,8 @@ class FrechetDistanceCalculator:
                 Options: "mmnist_stochastic", "mmnist_deterministic", "bair", "kth", "human"
             device: Device to use for computation. If None, will use CUDA if available,
                 otherwise CPU.
+            sqrt_trace_method: Method for trace of the matrix square root in FD computation.
+                Options: "schur", "svd". Default is "schur".
         """
         # Get the device
         if device is None:
@@ -281,6 +348,8 @@ class FrechetDistanceCalculator:
         self.model = _get_model(dataset)
         self.model.to(self.device)
         self.model.eval()  # Set to evaluation mode
+        # Configure method for trace of matrix square root
+        self.sqrt_trace_method = sqrt_trace_method
 
     def __call__(
         self,
@@ -459,8 +528,10 @@ class FrechetDistanceCalculator:
         sigma1 = np.cov(features1_np, rowvar=False, ddof=1)
         sigma2 = np.cov(features2_np, rowvar=False, ddof=1)
 
-        # Calculate Fréchet distance using NumPy/SciPy implementation
-        return _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
+        # Calculate Fréchet distance using selected method
+        return _calculate_frechet_distance_numpy(
+            mu1, sigma1, mu2, sigma2, method=self.sqrt_trace_method
+        )
 
     def _calculate_frechet_distance_from_gaussian_params(
         self, params1: torch.Tensor, params2: torch.Tensor
@@ -531,7 +602,9 @@ class FrechetDistanceCalculator:
         sigma2 = e_cov2 + cov_e2
 
         # Calculate Fréchet distance between the two Gaussian mixtures
-        return _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2)
+        return _calculate_frechet_distance_numpy(
+            mu1, sigma1, mu2, sigma2, method=self.sqrt_trace_method
+        )
 
     def extract_features(self, images: torch.Tensor) -> torch.Tensor:
         """Extract features from a set of images.
@@ -588,6 +661,7 @@ def frechet_distance(
     comparison_type: Literal["frame", "static_content", "dynamics"] = "frame",
     device: Union[str, torch.device] = None,
     batch_size: int = None,
+    sqrt_trace_method: Literal["schur", "svd"] = "schur",
 ) -> float:
     """Calculate the Fréchet distance between two sets of images or videos.
 
@@ -607,6 +681,8 @@ def frechet_distance(
         device: Device to use for computation. If None, will use CUDA if available, otherwise CPU.
         batch_size: Optional batch size for processing large datasets. If None, processes
             all data at once. Use this to reduce GPU memory usage for large datasets.
+        sqrt_trace_method: Method for trace of the matrix square root in FD computation.
+            Options: "schur", "svd". Default is "schur".
 
     Returns:
         The Fréchet distance between the two sets.
@@ -614,5 +690,9 @@ def frechet_distance(
     Raises:
         ValueError: If the input shapes are invalid or comparison_type is unrecognized.
     """
-    calculator = FrechetDistanceCalculator(dataset=dataset, device=device)
+    calculator = FrechetDistanceCalculator(
+        dataset=dataset,
+        device=device,
+        sqrt_trace_method=sqrt_trace_method,
+    )
     return calculator(images1, images2, comparison_type=comparison_type, batch_size=batch_size)

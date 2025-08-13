@@ -20,6 +20,25 @@ from srvp_fd.frechet_distance import (
 )
 
 
+def test_schur_svd_consistency_numpy():
+    """The Schur and SVD methods should match on well-conditioned SPD inputs."""
+    rng = np.random.default_rng(0)
+    for dim in [3, 8, 16]:
+        a = rng.standard_normal((dim, dim))
+        b = rng.standard_normal((dim, dim))
+        # Construct SPD covariances
+        sigma1 = a @ a.T + np.eye(dim) * 1e-6
+        sigma2 = b @ b.T + np.eye(dim) * 1e-6
+        mu1 = rng.standard_normal(dim)
+        mu2 = rng.standard_normal(dim)
+
+        fd_schur = _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2, method="schur")
+        fd_svd = _calculate_frechet_distance_numpy(mu1, sigma1, mu2, sigma2, method="svd")
+
+        # Tight tolerance; allow tiny numerical differences
+        assert fd_svd == pytest.approx(fd_schur, rel=1e-6, abs=1e-6)
+
+
 def test_calculate_frechet_distance():
     """Test the _calculate_frechet_distance_numpy function."""
     # Create two identical distributions
